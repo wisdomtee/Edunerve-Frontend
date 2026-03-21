@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { saveAuth } from "@/lib/auth"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -9,88 +10,71 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
-
-  const API_BASE_URL = "http://localhost:5000"
+  const [error, setError] = useState("")
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!email || !password) {
-      alert("Please fill in all fields")
-      return
-    }
+    setLoading(true)
+    setError("")
 
     try {
-      setLoading(true)
-
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const res = await fetch("http://localhost:5000/auth/login", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        body: JSON.stringify({ email, password })
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.message || "Login failed")
+        setError(data.message || "Login failed")
+        setLoading(false)
+        return
       }
 
-      localStorage.setItem("token", data.token)
-      localStorage.setItem("admin", JSON.stringify(data.admin))
-
+      saveAuth(data.token, data.user)
       router.push("/dashboard")
-    } catch (error: any) {
-      alert(error.message || "Something went wrong")
+    } catch (error) {
+      setError("Something went wrong")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-blue-50 flex items-center justify-center px-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-lg p-8 border">
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold">
-            E
-          </div>
-          <h1 className="text-2xl font-bold mt-3 text-gray-800">EduCore</h1>
-          <p className="text-gray-500 text-sm">Admin Login</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6">
+        <h1 className="text-2xl font-bold text-center mb-6">Login</h1>
 
         <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block mb-1 font-medium">Email</label>
-            <input
-              type="email"
-              placeholder="admin@educore.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2"
-            />
-          </div>
+          <input
+            type="email"
+            placeholder="Email"
+            className="w-full border rounded-lg px-4 py-3 outline-none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-          <div>
-            <label className="block mb-1 font-medium">Password</label>
-            <input
-              type="password"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2"
-            />
-          </div>
+          <input
+            type="password"
+            placeholder="Password"
+            className="w-full border rounded-lg px-4 py-3 outline-none"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          {error && (
+            <p className="text-red-500 text-sm">{error}</p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="w-full bg-blue-600 text-white rounded-lg py-3 font-semibold"
           >
-            {loading ? "Signing in..." : "Login"}
+            {loading ? "Logging in..." : "Login"}
           </button>
         </form>
       </div>

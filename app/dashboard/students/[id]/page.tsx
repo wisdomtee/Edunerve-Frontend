@@ -215,7 +215,7 @@ export default function StudentProfilePage() {
         <div className="bg-white p-6 rounded-xl shadow border flex flex-col items-center">
           {student.photo ? (
             <img
-              src={`${API_BASE_URL}${student.photo}`}
+              src={student.photo}
               alt={student.name}
               className="w-32 h-32 rounded-full object-cover mb-4"
             />

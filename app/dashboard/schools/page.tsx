@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
+import { getUser } from "@/lib/auth"
 
 type School = {
   id: string
@@ -10,45 +12,44 @@ type School = {
 }
 
 export default function SchoolsPage() {
+  const router = useRouter()
+
   const [schools, setSchools] = useState<School[]>([])
-  const [loading, setLoading] = useState(false)
-  const [formLoading, setFormLoading] = useState(false)
-
-  const [editingId, setEditingId] = useState<string | null>(null)
-
   const [name, setName] = useState("")
   const [address, setAddress] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+
+  // ✅ PROTECT PAGE (ADMIN ONLY)
+  useEffect(() => {
+    const user = getUser()
+
+    if (!user || user.role !== "admin") {
+      router.push("/dashboard")
+    }
+  }, [])
 
   const fetchSchools = async () => {
     try {
-      setLoading(true)
-
       const res = await fetch(`${API_BASE_URL}/schools`, {
         headers: getAuthHeaders(),
       })
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.message)
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to fetch schools")
+      }
 
-      setSchools(data)
+      setSchools(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error(error)
       alert("Failed to fetch schools")
-    } finally {
-      setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchSchools()
   }, [])
-
-  const resetForm = () => {
-    setName("")
-    setAddress("")
-    setEditingId(null)
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -59,37 +60,32 @@ export default function SchoolsPage() {
     }
 
     try {
-      setFormLoading(true)
-
-      const isEditing = Boolean(editingId)
-
-      const url = isEditing
+      const url = editingId
         ? `${API_BASE_URL}/schools/${editingId}`
         : `${API_BASE_URL}/schools/create`
 
-      const method = isEditing ? "PUT" : "POST"
+      const method = editingId ? "PUT" : "POST"
 
       const res = await fetch(url, {
         method,
         headers: getAuthHeaders(true),
-        body: JSON.stringify({
-          name,
-          address,
-        }),
+        body: JSON.stringify({ name, address }),
       })
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.message)
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to save school")
+      }
 
-      resetForm()
+      setName("")
+      setAddress("")
+      setEditingId(null)
+
       fetchSchools()
-
     } catch (error) {
       console.error(error)
       alert("Failed to save school")
-    } finally {
-      setFormLoading(false)
     }
   }
 
@@ -110,28 +106,26 @@ export default function SchoolsPage() {
 
       const data = await res.json()
 
-      if (!res.ok) throw new Error(data.message)
+      if (!res.ok) {
+        throw new Error(data.message || "Delete failed")
+      }
 
       fetchSchools()
     } catch (error) {
       console.error(error)
-      alert("Failed to delete school")
+      alert("Delete failed")
     }
   }
 
   return (
-    <div className="grid md:grid-cols-2 gap-6">
-
-      {/* Form */}
-
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* FORM */}
       <div className="bg-white p-6 rounded-xl shadow border">
-
         <h2 className="text-xl font-bold mb-4">
           {editingId ? "Edit School" : "Add School"}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-
           <input
             type="text"
             placeholder="School Name"
@@ -148,46 +142,20 @@ export default function SchoolsPage() {
             className="w-full border px-4 py-2 rounded-lg"
           />
 
-          <div className="flex gap-3">
-
-            <button
-              disabled={formLoading}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-            >
-              {formLoading
-                ? "Saving..."
-                : editingId
-                ? "Update School"
-                : "Add School"}
-            </button>
-
-            {editingId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="bg-gray-500 text-white px-4 py-2 rounded-lg"
-              >
-                Cancel
-              </button>
-            )}
-
-          </div>
-
+          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg">
+            {editingId ? "Update School" : "Add School"}
+          </button>
         </form>
-
       </div>
 
-      {/* Table */}
-
+      {/* TABLE */}
       <div className="bg-white p-6 rounded-xl shadow border">
-
         <h2 className="text-xl font-bold mb-4">Schools</h2>
 
-        {loading ? (
-          <p>Loading...</p>
+        {schools.length === 0 ? (
+          <p>No schools yet</p>
         ) : (
           <table className="w-full border">
-
             <thead>
               <tr className="bg-gray-100">
                 <th className="border p-2">Name</th>
@@ -199,13 +167,10 @@ export default function SchoolsPage() {
             <tbody>
               {schools.map((school) => (
                 <tr key={school.id}>
-
                   <td className="border p-2">{school.name}</td>
-
                   <td className="border p-2">{school.address}</td>
 
                   <td className="border p-2 flex gap-2">
-
                     <button
                       onClick={() => handleEdit(school)}
                       className="bg-yellow-500 text-white px-3 py-1 rounded"
@@ -219,18 +184,13 @@ export default function SchoolsPage() {
                     >
                       Delete
                     </button>
-
                   </td>
-
                 </tr>
               ))}
             </tbody>
-
           </table>
         )}
-
       </div>
-
     </div>
   )
 }

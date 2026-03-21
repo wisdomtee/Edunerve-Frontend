@@ -1,10 +1,28 @@
-export function getToken() {
-  if (typeof window === "undefined") return null
-  return localStorage.getItem("token")
+export const saveAuth = (token: string, user: any) => {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("token", token)
+    localStorage.setItem("user", JSON.stringify(user))
+  }
 }
 
-export function logout() {
-  if (typeof window === "undefined") return
-  localStorage.removeItem("token")
-  localStorage.removeItem("admin")
+export const getToken = () => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("token")
+  }
+  return null
+}
+
+export const getUser = () => {
+  if (typeof window !== "undefined") {
+    const user = localStorage.getItem("user")
+    return user ? JSON.parse(user) : null
+  }
+  return null
+}
+
+export const logout = () => {
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+  }
 }
