@@ -1,194 +1,165 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
-import { getUser } from "@/lib/auth"
 
 type School = {
-  id: string
+  id: number
   name: string
   address: string
 }
 
 export default function SchoolsPage() {
-  const router = useRouter()
-
   const [schools, setSchools] = useState<School[]>([])
   const [name, setName] = useState("")
   const [address, setAddress] = useState("")
-  const [editingId, setEditingId] = useState<string | null>(null)
-
-  // ✅ PROTECT PAGE (ADMIN ONLY)
-  useEffect(() => {
-    const user = getUser()
-
-    if (!user || user.role !== "admin") {
-      router.push("/dashboard")
-    }
-  }, [])
-
-  const fetchSchools = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/schools`, {
-        headers: getAuthHeaders(),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to fetch schools")
-      }
-
-      setSchools(Array.isArray(data) ? data : [])
-    } catch (error) {
-      console.error(error)
-      alert("Failed to fetch schools")
-    }
-  }
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
 
   useEffect(() => {
     fetchSchools()
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const fetchSchools = async () => {
+    try {
+      setLoading(true)
+      setError("")
+
+      const res = await fetch(`${API_BASE_URL}/schools`, {
+        headers: getAuthHeaders(),
+      })
+
+      const data = await res.json()
+      console.log("SCHOOLS RESPONSE:", data)
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to fetch schools")
+      }
+
+      if (Array.isArray(data)) {
+        setSchools(data)
+      } else if (Array.isArray(data.schools)) {
+        setSchools(data.schools)
+      } else {
+        setSchools([])
+      }
+    } catch (err: any) {
+      console.error("FETCH SCHOOLS ERROR:", err)
+      setError(err.message || "Unable to load schools")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!name || !address) {
-      alert("Please fill all fields")
-      return
-    }
-
     try {
-      const url = editingId
-        ? `${API_BASE_URL}/schools/${editingId}`
-        : `${API_BASE_URL}/schools/create`
+      setSubmitting(true)
+      setError("")
+      setSuccess("")
 
-      const method = editingId ? "PUT" : "POST"
-
-      const res = await fetch(url, {
-        method,
-        headers: getAuthHeaders(true),
+      const res = await fetch(`${API_BASE_URL}/schools/create`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ name, address }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to save school")
+        throw new Error(data?.message || "Failed to create school")
       }
 
+      setSuccess("School created successfully")
       setName("")
       setAddress("")
-      setEditingId(null)
-
-      fetchSchools()
-    } catch (error) {
-      console.error(error)
-      alert("Failed to save school")
-    }
-  }
-
-  const handleEdit = (school: School) => {
-    setEditingId(school.id)
-    setName(school.name)
-    setAddress(school.address)
-  }
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this school?")) return
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/schools/${id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.message || "Delete failed")
-      }
-
-      fetchSchools()
-    } catch (error) {
-      console.error(error)
-      alert("Delete failed")
+      await fetchSchools()
+    } catch (err: any) {
+      console.error("CREATE SCHOOL ERROR:", err)
+      setError(err.message || "Unable to create school")
+    } finally {
+      setSubmitting(false)
     }
   }
 
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
-      {/* FORM */}
-      <div className="bg-white p-6 rounded-xl shadow border">
-        <h2 className="text-xl font-bold mb-4">
-          {editingId ? "Edit School" : "Add School"}
-        </h2>
+    <div className="p-6 grid gap-6 lg:grid-cols-3">
+      <div className="rounded-2xl bg-white p-6 shadow">
+        <h2 className="mb-4 text-xl font-bold text-gray-800">Add School</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            placeholder="School Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full border px-4 py-2 rounded-lg"
-          />
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
-          <input
-            type="text"
-            placeholder="Address"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            className="w-full border px-4 py-2 rounded-lg"
-          />
+        {success && (
+          <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-600">
+            {success}
+          </div>
+        )}
 
-          <button className="bg-blue-600 text-white px-4 py-2 rounded-lg">
-            {editingId ? "Update School" : "Add School"}
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              School Name
+            </label>
+            <input
+              type="text"
+              placeholder="Enter school name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Address
+            </label>
+            <input
+              type="text"
+              placeholder="Enter school address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {submitting ? "Creating..." : "Create School"}
           </button>
         </form>
       </div>
 
-      {/* TABLE */}
-      <div className="bg-white p-6 rounded-xl shadow border">
-        <h2 className="text-xl font-bold mb-4">Schools</h2>
+      <div className="rounded-2xl bg-white p-6 shadow lg:col-span-2">
+        <h2 className="mb-4 text-xl font-bold text-gray-800">Schools</h2>
 
-        {schools.length === 0 ? (
-          <p>No schools yet</p>
+        {loading ? (
+          <p className="text-gray-500">Loading...</p>
+        ) : schools.length === 0 ? (
+          <p className="text-gray-500">No schools found.</p>
         ) : (
-          <table className="w-full border">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border p-2">Name</th>
-                <th className="border p-2">Address</th>
-                <th className="border p-2">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {schools.map((school) => (
-                <tr key={school.id}>
-                  <td className="border p-2">{school.name}</td>
-                  <td className="border p-2">{school.address}</td>
-
-                  <td className="border p-2 flex gap-2">
-                    <button
-                      onClick={() => handleEdit(school)}
-                      className="bg-yellow-500 text-white px-3 py-1 rounded"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(school.id)}
-                      className="bg-red-600 text-white px-3 py-1 rounded"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="space-y-3">
+            {schools.map((school) => (
+              <div key={school.id} className="rounded-lg border p-4">
+                <p className="font-bold text-gray-800">{school.name}</p>
+                <p className="text-sm text-gray-500">{school.address}</p>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

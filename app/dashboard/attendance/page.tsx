@@ -1,235 +1,256 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
 
+type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE"
+
 type Student = {
-  id: string
+  id: number
   name: string
   studentId: string
-  school?: {
-    name: string
-  }
-  classItem?: {
+  class?: {
+    id: number
     name: string
   }
 }
 
-type AttendanceRecord = {
-  id: string
-  status: string
-  studentId: string
-  student: Student
+type AttendanceResponseItem = {
+  studentId?: number
+  status?: AttendanceStatus
+  student?: {
+    id?: number
+  }
+}
+
+function getTodayLocalDate() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, "0")
+  const day = String(today.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 export default function AttendancePage() {
+  const router = useRouter()
+
   const [students, setStudents] = useState<Student[]>([])
-  const [attendance, setAttendance] = useState<Record<string, string>>({})
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split("T")[0]
+  const [selectedDate, setSelectedDate] = useState(getTodayLocalDate())
+  const [attendance, setAttendance] = useState<Record<string, AttendanceStatus>>(
+    {}
   )
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
 
   const fetchStudents = async () => {
+    const res = await fetch(`${API_BASE_URL}/students`, {
+      headers: getAuthHeaders(),
+    })
+
+    if (res.status === 401) {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      router.push("/login")
+      throw new Error("Unauthorized")
+    }
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || "Failed to fetch students")
+    }
+
+    const data = await res.json()
+    setStudents(Array.isArray(data) ? data : data.students || [])
+  }
+
+  const fetchAttendance = async () => {
+    const res = await fetch(`${API_BASE_URL}/attendance?date=${selectedDate}`, {
+      headers: getAuthHeaders(),
+    })
+
+    if (res.status === 401) {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      router.push("/login")
+      throw new Error("Unauthorized")
+    }
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || "Failed to fetch attendance")
+    }
+
+    const data = await res.json()
+    const attendanceList: AttendanceResponseItem[] = Array.isArray(data)
+      ? data
+      : data.attendance || []
+
+    const mapped: Record<string, AttendanceStatus> = {}
+
+    attendanceList.forEach((item) => {
+      const id = item.studentId ?? item.student?.id
+      if (id && item.status) {
+        mapped[String(id)] = item.status
+      }
+    })
+
+    setAttendance(mapped)
+  }
+
+  const loadPage = async () => {
     try {
       setLoading(true)
+      setError("")
 
-      const res = await fetch(
-        `${API_BASE_URL}/students?search=&page=1&limit=1000`,
-        {
-          headers: getAuthHeaders(),
-        }
-      )
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to fetch students")
+      await Promise.all([fetchStudents(), fetchAttendance()])
+    } catch (err: any) {
+      if (err.message !== "Unauthorized") {
+        setError(err.message || "Failed to load attendance page")
       }
-
-      setStudents(data.students || [])
-    } catch (error) {
-      console.error(error)
-      alert("Failed to fetch students")
     } finally {
       setLoading(false)
     }
   }
 
-  const fetchAttendance = async () => {
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/attendance?date=${selectedDate}`,
-        {
-          headers: getAuthHeaders(),
-        }
-      )
-
-      const data: AttendanceRecord[] = await res.json()
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch attendance")
-      }
-
-      const mapped: Record<string, string> = {}
-
-      data.forEach((item) => {
-        mapped[item.studentId] = item.status
-      })
-
-      setAttendance(mapped)
-    } catch (error) {
-      console.error(error)
-      alert("Failed to fetch attendance")
-    }
-  }
-
   useEffect(() => {
-    fetchStudents()
-  }, [])
-
-  useEffect(() => {
-    fetchAttendance()
+    loadPage()
   }, [selectedDate])
 
-  const markAttendance = async (studentId: string, status: string) => {
+  const updateStatus = (studentId: number, status: AttendanceStatus) => {
+    setAttendance((prev) => ({
+      ...prev,
+      [String(studentId)]: status,
+    }))
+  }
+
+  const saveAttendance = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/attendance/mark`, {
+      setError("")
+      setSaving(true)
+
+      if (!selectedDate) {
+        throw new Error("Please select a date")
+      }
+
+      if (students.length === 0) {
+        throw new Error("No students available")
+      }
+
+      const records = students.map((student) => ({
+        studentId: student.id,
+        status: attendance[String(student.id)] || "PRESENT",
+      }))
+
+      const res = await fetch(`${API_BASE_URL}/attendance/mark-bulk`, {
         method: "POST",
-        headers: getAuthHeaders(true),
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          studentId,
           date: selectedDate,
-          status,
+          records,
         }),
       })
 
-      const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to mark attendance")
+      if (res.status === 401) {
+        localStorage.removeItem("token")
+        localStorage.removeItem("user")
+        router.push("/login")
+        return
       }
 
-      setAttendance((prev) => ({
-        ...prev,
-        [studentId]: status,
-      }))
-    } catch (error) {
-      console.error(error)
-      alert("Failed to mark attendance")
-    }
-  }
+      const text = await res.text()
 
-  const exportCSV = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/attendance/export`, {
-        headers: getAuthHeaders(),
-      })
-
-      if (!res.ok) {
-        throw new Error("Failed to export CSV")
+      let data: any = {}
+      try {
+        data = text ? JSON.parse(text) : {}
+      } catch {
+        data = { message: text }
       }
 
-      const blob = await res.blob()
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to save attendance")
+      }
 
-      const url = window.URL.createObjectURL(blob)
-
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "attendance-report.csv"
-      a.click()
-
-      window.URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error(error)
-      alert("Export failed")
+      alert(data.message || "Attendance saved successfully")
+      await fetchAttendance()
+    } catch (err: any) {
+      const message = err.message || "Failed to save attendance"
+      setError(message)
+      alert(message)
+    } finally {
+      setSaving(false)
     }
   }
 
   return (
-    <div className="bg-white p-6 rounded-xl shadow border">
-      <div className="flex items-center justify-between mb-6 gap-4">
+    <div className="p-6">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <h1 className="text-2xl font-bold">Attendance</h1>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={exportCSV}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg"
-          >
-            Export CSV
-          </button>
-
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="border px-4 py-2 rounded-lg"
+            className="rounded border px-3 py-2"
           />
+          <button
+            onClick={saveAttendance}
+            disabled={saving || loading}
+            className="rounded bg-blue-600 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Attendance"}
+          </button>
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded bg-red-100 px-4 py-3 text-red-700">
+          {error}
+        </div>
+      )}
+
       {loading ? (
-        <p>Loading students...</p>
+        <p>Loading...</p>
+      ) : students.length === 0 ? (
+        <p>No students found.</p>
       ) : (
-        <table className="w-full border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border p-2">Student</th>
-              <th className="border p-2">Student ID</th>
-              <th className="border p-2">School</th>
-              <th className="border p-2">Class</th>
-              <th className="border p-2">Status</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {students.map((student) => (
-              <tr key={student.id}>
-                <td className="border p-2">{student.name}</td>
-                <td className="border p-2">{student.studentId}</td>
-                <td className="border p-2">{student.school?.name || "-"}</td>
-                <td className="border p-2">{student.classItem?.name || "-"}</td>
-
-                <td className="border p-2">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => markAttendance(student.id, "Present")}
-                      className={`px-3 py-1 rounded text-white ${
-                        attendance[student.id] === "Present"
-                          ? "bg-green-700"
-                          : "bg-green-500"
-                      }`}
-                    >
-                      Present
-                    </button>
-
-                    <button
-                      onClick={() => markAttendance(student.id, "Absent")}
-                      className={`px-3 py-1 rounded text-white ${
-                        attendance[student.id] === "Absent"
-                          ? "bg-red-700"
-                          : "bg-red-500"
-                      }`}
-                    >
-                      Absent
-                    </button>
-
-                    <button
-                      onClick={() => markAttendance(student.id, "Late")}
-                      className={`px-3 py-1 rounded text-white ${
-                        attendance[student.id] === "Late"
-                          ? "bg-yellow-600"
-                          : "bg-yellow-500"
-                      }`}
-                    >
-                      Late
-                    </button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto rounded border bg-white">
+          <table className="min-w-full border-collapse">
+            <thead>
+              <tr className="bg-gray-100 text-left">
+                <th className="border px-4 py-3">Student Name</th>
+                <th className="border px-4 py-3">Student ID</th>
+                <th className="border px-4 py-3">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {students.map((student) => (
+                <tr key={student.id}>
+                  <td className="border px-4 py-3">{student.name}</td>
+                  <td className="border px-4 py-3">{student.studentId}</td>
+                  <td className="border px-4 py-3">
+                    <select
+                      value={attendance[String(student.id)] || "PRESENT"}
+                      onChange={(e) =>
+                        updateStatus(student.id, e.target.value as AttendanceStatus)
+                      }
+                      className="rounded border px-3 py-2"
+                    >
+                      <option value="PRESENT">Present</option>
+                      <option value="ABSENT">Absent</option>
+                      <option value="LATE">Late</option>
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

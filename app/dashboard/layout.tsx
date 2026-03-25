@@ -12,6 +12,17 @@ type AppUser = {
   role?: string
 }
 
+const menuItems = [
+  { name: "Dashboard", href: "/dashboard" },
+  { name: "Students", href: "/dashboard/students" },
+  { name: "Attendance", href: "/dashboard/attendance" },
+  { name: "Teachers", href: "/dashboard/teachers" },
+  { name: "Classes", href: "/dashboard/classes" },
+  { name: "Schools", href: "/dashboard/schools" },
+  { name: "Subjects", href: "/dashboard/subjects" },
+  { name: "Results", href: "/dashboard/results" },
+]
+
 export default function DashboardLayout({
   children,
 }: {
@@ -29,7 +40,7 @@ export default function DashboardLayout({
     const currentUser = getUser()
 
     if (!token) {
-      router.push("/login")
+      router.replace("/login")
       return
     }
 
@@ -39,13 +50,13 @@ export default function DashboardLayout({
 
   const handleLogout = () => {
     logout()
-    router.push("/login")
+    router.replace("/login")
   }
 
   const linkClass = (href: string) =>
     [
-      "!block",
-      "!w-full",
+      "block",
+      "w-full",
       "px-4",
       "py-3",
       "rounded-xl",
@@ -59,7 +70,7 @@ export default function DashboardLayout({
 
   if (!checkedAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
         <p>Loading...</p>
       </div>
     )
@@ -67,10 +78,9 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Mobile top bar */}
-      <div className="md:hidden bg-blue-700 text-white flex items-center justify-between px-4 py-3 shadow">
+      <div className="md:hidden flex items-center justify-between bg-blue-700 px-4 py-3 text-white shadow">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white text-blue-700 flex items-center justify-center font-extrabold shadow">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white font-extrabold text-blue-700 shadow">
             E
           </div>
           <div>
@@ -79,75 +89,28 @@ export default function DashboardLayout({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="text-2xl leading-none"
-        >
+        <button type="button" onClick={() => setOpen(!open)} className="text-2xl">
           ☰
         </button>
       </div>
 
-      {/* Mobile menu */}
       {open && (
-        <div className="md:hidden bg-blue-700 px-4 pb-4 shadow">
-          <div className="!flex !flex-col gap-2">
-            <Link
-              href="/dashboard"
-              className={linkClass("/dashboard")}
-              onClick={() => setOpen(false)}
-            >
-              Dashboard
-            </Link>
-
-            <Link
-              href="/dashboard/students"
-              className={linkClass("/dashboard/students")}
-              onClick={() => setOpen(false)}
-            >
-              Students
-            </Link>
-
-            <Link
-              href="/dashboard/attendance"
-              className={linkClass("/dashboard/attendance")}
-              onClick={() => setOpen(false)}
-            >
-              Attendance
-            </Link>
-
-            {user?.role === "admin" && (
-              <>
-                <Link
-                  href="/dashboard/teachers"
-                  className={linkClass("/dashboard/teachers")}
-                  onClick={() => setOpen(false)}
-                >
-                  Teachers
-                </Link>
-
-                <Link
-                  href="/dashboard/classes"
-                  className={linkClass("/dashboard/classes")}
-                  onClick={() => setOpen(false)}
-                >
-                  Classes
-                </Link>
-
-                <Link
-                  href="/dashboard/schools"
-                  className={linkClass("/dashboard/schools")}
-                  onClick={() => setOpen(false)}
-                >
-                  Schools
-                </Link>
-              </>
-            )}
+        <div className="bg-blue-700 px-4 pb-4 shadow md:hidden">
+          <div className="flex flex-col gap-2">
+            {menuItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={linkClass(item.href)}
+                onClick={() => setOpen(false)}
+              >
+                {item.name}
+              </Link>
+            ))}
 
             <button
-              type="button"
               onClick={handleLogout}
-              className="!block !w-full mt-2 bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl text-left font-medium"
+              className="mt-2 rounded-xl bg-red-600 px-4 py-3 text-left font-medium text-white hover:bg-red-700"
             >
               Logout
             </button>
@@ -156,14 +119,12 @@ export default function DashboardLayout({
       )}
 
       <div className="flex min-h-screen">
-        {/* Desktop sidebar */}
-        <aside className="hidden md:flex w-72 bg-blue-700 text-white flex-col shadow-xl">
-          <div className="p-6 border-b border-blue-600">
+        <aside className="hidden w-72 flex-col bg-blue-700 text-white shadow-xl md:flex">
+          <div className="border-b border-blue-600 p-6">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-white text-blue-700 flex items-center justify-center text-2xl font-extrabold shadow">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl font-extrabold text-blue-700 shadow">
                 E
               </div>
-
               <div>
                 <h1 className="text-2xl font-bold">EduNerve</h1>
                 <p className="text-sm text-blue-100">School Management System</p>
@@ -172,66 +133,27 @@ export default function DashboardLayout({
           </div>
 
           <nav className="flex-1 p-4">
-            <div className="!flex !flex-col gap-2">
-              <Link href="/dashboard" className={linkClass("/dashboard")}>
-                Dashboard
-              </Link>
-
-              <Link
-                href="/dashboard/students"
-                className={linkClass("/dashboard/students")}
-              >
-                Students
-              </Link>
-
-              <Link
-                href="/dashboard/attendance"
-                className={linkClass("/dashboard/attendance")}
-              >
-                Attendance
-              </Link>
-
-              {user?.role === "admin" && (
-                <>
-                  <Link
-                    href="/dashboard/teachers"
-                    className={linkClass("/dashboard/teachers")}
-                  >
-                    Teachers
-                  </Link>
-
-                  <Link
-                    href="/dashboard/classes"
-                    className={linkClass("/dashboard/classes")}
-                  >
-                    Classes
-                  </Link>
-
-                  <Link
-                    href="/dashboard/schools"
-                    className={linkClass("/dashboard/schools")}
-                  >
-                    Schools
-                  </Link>
-                </>
-              )}
+            <div className="flex flex-col gap-2">
+              {menuItems.map((item) => (
+                <Link key={item.href} href={item.href} className={linkClass(item.href)}>
+                  {item.name}
+                </Link>
+              ))}
             </div>
           </nav>
 
-          <div className="p-4 border-t border-blue-600">
+          <div className="border-t border-blue-600 p-4">
             <button
-              type="button"
               onClick={handleLogout}
-              className="!block !w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-xl font-medium text-left"
+              className="w-full rounded-xl bg-red-600 px-4 py-3 text-left font-medium text-white hover:bg-red-700"
             >
               Logout
             </button>
           </div>
         </aside>
 
-        {/* Main content area */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          <header className="hidden md:flex items-center justify-between bg-white border-b px-6 py-4 shadow-sm">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="hidden items-center justify-between border-b bg-white px-6 py-4 shadow-sm md:flex">
             <div>
               <h2 className="text-2xl font-bold text-gray-800">EduNerve Admin Panel</h2>
               <p className="text-sm text-gray-500">
@@ -240,12 +162,14 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
                 {user?.name?.[0] || "A"}
               </div>
               <div className="text-sm">
-                <p className="font-semibold text-gray-800">{user?.name || "Administrator"}</p>
-                <p className="text-gray-500">{user?.role || "admin"}</p>
+                <p className="font-semibold text-gray-800">
+                  {user?.name || "Administrator"}
+                </p>
+                <p className="text-gray-500">{user?.role || "ADMIN"}</p>
               </div>
             </div>
           </header>

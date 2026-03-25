@@ -27,7 +27,7 @@ type WeekData = {
 }
 
 type Student = {
-  id: string
+  id: number
   name: string
   studentId: string
   school?: {
@@ -66,7 +66,7 @@ export default function DashboardPage() {
         fetch(`${API_BASE_URL}/dashboard/attendance-week`, {
           headers,
         }),
-        fetch(`${API_BASE_URL}/students?search=&page=1&limit=5`, {
+        fetch(`${API_BASE_URL}/students`, {
           headers,
         }),
       ])
@@ -82,25 +82,35 @@ export default function DashboardPage() {
         return
       }
 
-      const statsData = await statsRes.json()
-      const weekDataRes = await weekRes.json()
-      const studentsData = await studentsRes.json()
-
       if (!statsRes.ok) {
-        throw new Error(statsData.message || "Failed to fetch stats")
+        const text = await statsRes.text()
+        throw new Error(text || "Failed to fetch stats")
       }
 
       if (!weekRes.ok) {
-        throw new Error(weekDataRes.message || "Failed to fetch weekly attendance")
+        const text = await weekRes.text()
+        throw new Error(text || "Failed to fetch weekly attendance")
       }
 
-      if (!studentsRes.ok) {
-        throw new Error(studentsData.message || "Failed to fetch recent students")
+      const statsData = await statsRes.json()
+      const weekDataRes = await weekRes.json()
+
+      let studentsData: any = { students: [] }
+
+      if (studentsRes.ok) {
+        studentsData = await studentsRes.json()
+      } else {
+        const text = await studentsRes.text()
+        console.warn("Students endpoint failed:", text)
       }
 
       setStats(statsData)
       setWeekData(Array.isArray(weekDataRes) ? weekDataRes : [])
-      setRecentStudents(studentsData.students || [])
+      setRecentStudents(
+        Array.isArray(studentsData)
+          ? studentsData.slice(0, 5)
+          : studentsData.students || []
+      )
     } catch (error) {
       console.error("DASHBOARD ERROR:", error)
       alert("Dashboard failed to load")

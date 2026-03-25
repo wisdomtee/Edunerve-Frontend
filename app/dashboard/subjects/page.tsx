@@ -8,7 +8,7 @@ type School = {
   name: string
 }
 
-type ClassItem = {
+type Subject = {
   id: number
   name: string
   school?: {
@@ -17,8 +17,8 @@ type ClassItem = {
   } | null
 }
 
-export default function ClassesPage() {
-  const [classes, setClasses] = useState<ClassItem[]>([])
+export default function SubjectsPage() {
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const [schools, setSchools] = useState<School[]>([])
   const [name, setName] = useState("")
   const [schoolId, setSchoolId] = useState("")
@@ -36,8 +36,8 @@ export default function ClassesPage() {
       setLoading(true)
       setError("")
 
-      const [classRes, schoolRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/classes`, {
+      const [subjectsRes, schoolsRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/subjects`, {
           headers: getAuthHeaders(),
         }),
         fetch(`${API_BASE_URL}/schools`, {
@@ -45,38 +45,38 @@ export default function ClassesPage() {
         }),
       ])
 
-      const classData = await classRes.json()
-      const schoolData = await schoolRes.json()
+      const subjectsData = await subjectsRes.json()
+      const schoolsData = await schoolsRes.json()
 
-      console.log("CLASSES RESPONSE:", classData)
-      console.log("SCHOOLS RESPONSE:", schoolData)
+      console.log("SUBJECTS:", subjectsData)
+      console.log("SCHOOLS:", schoolsData)
 
-      if (!classRes.ok) {
-        throw new Error(classData?.message || "Failed to fetch classes")
+      if (!subjectsRes.ok) {
+        throw new Error(subjectsData?.message || "Failed to fetch subjects")
       }
 
-      if (!schoolRes.ok) {
-        throw new Error(schoolData?.message || "Failed to fetch schools")
+      if (!schoolsRes.ok) {
+        throw new Error(schoolsData?.message || "Failed to fetch schools")
       }
 
-      if (Array.isArray(classData)) {
-        setClasses(classData)
-      } else if (Array.isArray(classData.classes)) {
-        setClasses(classData.classes)
+      if (Array.isArray(subjectsData)) {
+        setSubjects(subjectsData)
+      } else if (Array.isArray(subjectsData.subjects)) {
+        setSubjects(subjectsData.subjects)
       } else {
-        setClasses([])
+        setSubjects([])
       }
 
-      if (Array.isArray(schoolData)) {
-        setSchools(schoolData)
-      } else if (Array.isArray(schoolData.schools)) {
-        setSchools(schoolData.schools)
+      if (Array.isArray(schoolsData)) {
+        setSchools(schoolsData)
+      } else if (Array.isArray(schoolsData.schools)) {
+        setSchools(schoolsData.schools)
       } else {
         setSchools([])
       }
     } catch (err: any) {
-      console.error("FETCH DATA ERROR:", err)
-      setError(err.message || "Unable to load page data")
+      console.error("FETCH SUBJECTS ERROR:", err)
+      setError(err.message || "Unable to load data")
     } finally {
       setLoading(false)
     }
@@ -85,12 +85,17 @@ export default function ClassesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    if (!name || !schoolId) {
+      setError("Subject name and school are required")
+      return
+    }
+
     try {
       setSubmitting(true)
       setError("")
       setSuccess("")
 
-      const res = await fetch(`${API_BASE_URL}/classes/create`, {
+      const res = await fetch(`${API_BASE_URL}/subjects/create`, {
         method: "POST",
         headers: {
           ...getAuthHeaders(),
@@ -105,16 +110,16 @@ export default function ClassesPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data?.message || "Failed to create class")
+        throw new Error(data?.message || "Failed to create subject")
       }
 
-      setSuccess("Class created successfully")
+      setSuccess("Subject created successfully")
       setName("")
       setSchoolId("")
       await fetchData()
     } catch (err: any) {
-      console.error("CREATE CLASS ERROR:", err)
-      setError(err.message || "Unable to create class")
+      console.error("CREATE SUBJECT ERROR:", err)
+      setError(err.message || "Unable to create subject")
     } finally {
       setSubmitting(false)
     }
@@ -122,8 +127,9 @@ export default function ClassesPage() {
 
   return (
     <div className="p-6 grid gap-6 lg:grid-cols-3">
+      {/* CREATE FORM */}
       <div className="rounded-2xl bg-white p-6 shadow">
-        <h2 className="mb-4 text-xl font-bold text-gray-800">Add Class</h2>
+        <h2 className="mb-4 text-xl font-bold text-gray-800">Add Subject</h2>
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -140,11 +146,11 @@ export default function ClassesPage() {
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Class Name
+              Subject Name
             </label>
             <input
               type="text"
-              placeholder="Enter class name"
+              placeholder="Enter subject name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-4 py-3"
@@ -176,25 +182,26 @@ export default function ClassesPage() {
             disabled={submitting}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 text-white hover:bg-blue-700 disabled:opacity-60"
           >
-            {submitting ? "Creating..." : "Create Class"}
+            {submitting ? "Creating..." : "Create Subject"}
           </button>
         </form>
       </div>
 
+      {/* SUBJECT LIST */}
       <div className="rounded-2xl bg-white p-6 shadow lg:col-span-2">
-        <h2 className="mb-4 text-xl font-bold text-gray-800">Classes</h2>
+        <h2 className="mb-4 text-xl font-bold text-gray-800">Subjects</h2>
 
         {loading ? (
           <p className="text-gray-500">Loading...</p>
-        ) : classes.length === 0 ? (
-          <p className="text-gray-500">No classes found.</p>
+        ) : subjects.length === 0 ? (
+          <p className="text-gray-500">No subjects found.</p>
         ) : (
           <div className="space-y-3">
-            {classes.map((item) => (
-              <div key={item.id} className="rounded-lg border p-4">
-                <p className="font-bold text-gray-800">{item.name}</p>
+            {subjects.map((subject) => (
+              <div key={subject.id} className="rounded-lg border p-4">
+                <p className="font-bold text-gray-800">{subject.name}</p>
                 <p className="text-sm text-gray-500">
-                  {item.school?.name || "No school"}
+                  {subject.school?.name || "No school"}
                 </p>
               </div>
             ))}
