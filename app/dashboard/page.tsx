@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import RoleGuard from "@/app/components/RoleGuard"
 import {
   ResponsiveContainer,
   BarChart,
@@ -19,7 +20,6 @@ import {
   Legend,
 } from "recharts"
 import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/auth"
-import RoleGuard from "@/app/components/RoleGuard"
 
 type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT"
 
@@ -124,6 +124,33 @@ type QuickActionItem = {
   href: string
 }
 
+type ParentPortalChild = {
+  id: number
+  name: string
+  studentId: string
+  class?: {
+    id: number
+    name: string
+  } | null
+  averageScore?: number | null
+  attendanceSummary?: {
+    total: number
+    present: number
+    absent: number
+    late: number
+  }
+}
+
+type ParentPortalResponse = {
+  parent?: {
+    id: number
+    name: string
+    email?: string | null
+    phone?: string | null
+  } | null
+  children?: ParentPortalChild[]
+}
+
 const CHART_COLORS = [
   "#2563eb",
   "#16a34a",
@@ -167,7 +194,7 @@ export default function DashboardHomePage() {
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [availableClasses, setAvailableClasses] = useState<string[]>([])
-  const [teacherDebug, setTeacherDebug] = useState<any>(null)
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null)
 
   useEffect(() => {
     const storedUser = getUser()
@@ -200,7 +227,6 @@ export default function DashboardHomePage() {
         if (!res.ok) continue
 
         const data: TeacherDashboardChartsResponse = await res.json()
-
         return data
       } catch {
         continue
@@ -279,7 +305,6 @@ export default function DashboardHomePage() {
                 ? teacherSummaryData.classes.map((item) => item.name)
                 : []
             )
-            setTeacherDebug(teacherSummaryData)
           }
         } catch (teacherError) {
           console.error("Failed to load teacher summary:", teacherError)
@@ -305,61 +330,56 @@ export default function DashboardHomePage() {
       }
 
       if (currentUser.role === "PARENT") {
-        const resultsRes = await fetch(`${API_BASE_URL}/results`, {
-          headers: getAuthHeaders(),
-        })
-
-        const resultsData = resultsRes.ok ? await resultsRes.json() : []
-        const results = Array.isArray(resultsData) ? resultsData : []
-
-        let attendance: any[] = []
-
         try {
-          const attendanceRes = await fetch(`${API_BASE_URL}/attendance`, {
+          const res = await fetch(`${API_BASE_URL}/parent-portal/children`, {
             headers: getAuthHeaders(),
           })
 
-          if (attendanceRes.ok) {
-            const attendanceData = await attendanceRes.json()
-            attendance = Array.isArray(attendanceData?.attendance)
-              ? attendanceData.attendance
-              : []
+          const data: ParentPortalResponse = res.ok ? await res.json() : {}
+
+          const children = Array.isArray(data?.children) ? data.children : []
+
+          if (children.length > 0) {
+            const firstChild = children[0]
+
+            setSelectedChildId(firstChild.id)
+
+            const averageScore =
+              firstChild.averageScore !== null &&
+              firstChild.averageScore !== undefined
+                ? Number(firstChild.averageScore)
+                : null
+
+            const attendanceRate =
+              firstChild.attendanceSummary &&
+              firstChild.attendanceSummary.total > 0
+                ? Math.round(
+                    (firstChild.attendanceSummary.present /
+                      firstChild.attendanceSummary.total) *
+                      100
+                  )
+                : null
+
+            setChildSummary({
+              studentName: firstChild.name,
+              className: firstChild.class?.name || "",
+              averageScore,
+              attendanceRate,
+            })
+
+            setStats((prev) => ({
+              ...prev,
+              students: children.length,
+            }))
+          } else {
+            setSelectedChildId(null)
+            setChildSummary({})
           }
-        } catch {
-          attendance = []
+        } catch (parentError) {
+          console.error("Parent dashboard error:", parentError)
+          setSelectedChildId(null)
+          setChildSummary({})
         }
-
-        const firstStudent = results[0]?.student || attendance[0]?.student
-
-        const averageScore =
-          results.length > 0
-            ? Math.round(
-                results.reduce(
-                  (sum: number, item: any) => sum + Number(item.score || 0),
-                  0
-                ) / results.length
-              )
-            : null
-
-        const presentCount = attendance.filter(
-          (item: any) => String(item.status).toUpperCase() === "PRESENT"
-        ).length
-
-        const attendanceRate =
-          attendance.length > 0
-            ? Math.round((presentCount / attendance.length) * 100)
-            : null
-
-        setChildSummary({
-          studentName: firstStudent?.name,
-          className:
-            firstStudent?.class?.name ||
-            firstStudent?.className ||
-            firstStudent?.class?.title ||
-            "",
-          averageScore,
-          attendanceRate,
-        })
       }
     } catch (err: any) {
       setError(err.message || "Failed to load dashboard")
@@ -422,48 +442,6 @@ export default function DashboardHomePage() {
     }
 
     if (user.role === "TEACHER") {
-      {teacherDebug && (
-  <div className="rounded-2xl border bg-yellow-50 p-5 shadow-sm">
-    <h3 className="text-lg font-bold text-gray-900">
-      🔍 Teacher Debug Panel
-    </h3>
-
-    <div className="mt-3 text-sm space-y-2 text-gray-700">
-      <p>
-        <strong>Name:</strong> {teacherDebug.teacher?.name}
-      </p>
-
-      <p>
-        <strong>Classes Assigned:</strong>{" "}
-        {teacherDebug.classes?.length || 0}
-      </p>
-
-      <p>
-        <strong>Students:</strong>{" "}
-        {teacherDebug.stats?.students || 0}
-      </p>
-
-      <p>
-        <strong>Results:</strong>{" "}
-        {teacherDebug.stats?.results || 0}
-      </p>
-
-      <p>
-        <strong>Attendance:</strong>{" "}
-        {teacherDebug.stats?.attendance || 0}
-      </p>
-
-      <div>
-        <strong>Class List:</strong>
-        <ul className="list-disc ml-5 mt-2">
-          {teacherDebug.classes?.map((c: any) => (
-            <li key={c.id}>{c.name}</li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  </div>
-)}
       return [
         {
           title: "Students",
@@ -491,18 +469,24 @@ export default function DashboardHomePage() {
     return [
       {
         title: "My Child",
-        value: stats.students,
-        href: "/dashboard/results",
+        value: childSummary.studentName || "-",
+        href: "/dashboard/parents",
       },
       {
         title: "Results",
         value: stats.results,
-        href: "/dashboard/results",
+        href: selectedChildId
+          ? `/dashboard/students/${selectedChildId}/report`
+          : "/dashboard/parents",
       },
       {
         title: "Attendance",
-        value: stats.attendance,
-        href: "/dashboard/attendance",
+        value:
+          childSummary.attendanceRate !== null &&
+          childSummary.attendanceRate !== undefined
+            ? `${childSummary.attendanceRate}%`
+            : "-",
+        href: "/dashboard/parents",
       },
       {
         title: "Average Score",
@@ -511,10 +495,12 @@ export default function DashboardHomePage() {
           childSummary.averageScore !== undefined
             ? `${childSummary.averageScore}%`
             : "-",
-        href: "/dashboard/results",
+        href: selectedChildId
+          ? `/dashboard/students/${selectedChildId}/report`
+          : "/dashboard/parents",
       },
     ]
-  }, [user, stats, childSummary])
+  }, [user, stats, childSummary, selectedChildId])
 
   const schoolAdminQuickActions: QuickActionItem[] = [
     {
@@ -1363,16 +1349,25 @@ export default function DashboardHomePage() {
               </h3>
               <div className="mt-4 flex flex-col gap-3">
                 <Link
-                  href="/dashboard/results"
+                  href="/dashboard/parents"
                   className="rounded-xl bg-blue-600 px-4 py-3 text-white"
                 >
                   View My Child
                 </Link>
+
                 <Link
-                  href="/dashboard/results"
-                  className="rounded-xl bg-blue-600 px-4 py-3 text-white"
+                  href={
+                    selectedChildId
+                      ? `/dashboard/students/${selectedChildId}/report`
+                      : "/dashboard/parents"
+                  }
+                  className={`rounded-xl px-4 py-3 text-white ${
+                    selectedChildId
+                      ? "bg-blue-600"
+                      : "pointer-events-none cursor-not-allowed bg-gray-400"
+                  }`}
                 >
-                  View Results
+                  View My Result
                 </Link>
               </div>
             </div>

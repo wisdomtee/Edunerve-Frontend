@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { io, Socket } from "socket.io-client"
+import ParentSidebar from "../components/ParentSidebar"
 import {
   Bell,
   BookOpen,
@@ -13,17 +15,30 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquare,
   School,
   UserCircle2,
   Users,
   X,
 } from "lucide-react"
-import { getToken, getUser, logout } from "@/lib/auth"
+import {
+  API_BASE_URL,
+  getAuthHeaders,
+  getToken,
+  getUser,
+  logout,
+} from "@/lib/auth"
+import {
+  clearSelectedChild,
+  getSelectedChild,
+  setSelectedChild,
+  type ParentChild,
+} from "@/lib/parent"
 
 type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT"
 
 type AppUser = {
-  id?: string
+  id?: string | number
   name?: string
   email?: string
   role?: UserRole | string
@@ -44,6 +59,27 @@ type MenuItem = {
   roles: UserRole[]
   icon: React.ComponentType<{ className?: string }>
   showNotificationBadge?: boolean
+}
+
+type ParentPortalChildResponse = {
+  id: number
+  name: string
+  class?: {
+    id: number
+    name: string
+  } | null
+}
+
+type ParentPortalResponse = {
+  children?: ParentPortalChildResponse[]
+}
+
+type SocketNotificationPayload = {
+  id?: number
+  title?: string
+  message?: string
+  href?: string
+  time?: string
 }
 
 const notificationsSeed: NotificationItem[] = [
@@ -123,8 +159,14 @@ const menuItems: MenuItem[] = [
     icon: BookOpen,
   },
   {
-    name: "My Child",
-    href: "/dashboard/children",
+    name: "Messages",
+    href: "/dashboard/messages",
+    roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER", "PARENT"],
+    icon: MessageSquare,
+  },
+  {
+    name: "Parent Portal",
+    href: "/dashboard/parents",
     roles: ["PARENT"],
     icon: UserCircle2,
   },
@@ -152,7 +194,13 @@ export default function DashboardLayout({
   const [notifications, setNotifications] =
     useState<NotificationItem[]>(notificationsSeed)
 
+  const [parentChildren, setParentChildren] = useState<ParentChild[]>([])
+  const [selectedChildState, setSelectedChildState] =
+    useState<ParentChild | null>(null)
+  const [loadingChildren, setLoadingChildren] = useState(false)
+
   const notificationRef = useRef<HTMLDivElement | null>(null)
+  const socketRef = useRef<Socket | null>(null)
 
   useEffect(() => {
     const token = getToken()
@@ -183,6 +231,107 @@ export default function DashboardLayout({
     }
   }, [])
 
+  useEffect(() => {
+    const loadParentChildren = async () => {
+      if (user?.role !== "PARENT") return
+
+      try {
+        setLoadingChildren(true)
+
+        const res = await fetch(`${API_BASE_URL}/parent-portal/children`, {
+          headers: getAuthHeaders(),
+        })
+
+        if (!res.ok) {
+          setParentChildren([])
+          setSelectedChildState(null)
+          clearSelectedChild()
+          return
+        }
+
+        const data: ParentPortalResponse = await res.json()
+
+        const childrenList: ParentChild[] = Array.isArray(data?.children)
+          ? data.children.map((child) => ({
+              id: child.id,
+              name: child.name,
+              className: child.class?.name || "",
+            }))
+          : []
+
+        setParentChildren(childrenList)
+
+        if (childrenList.length === 0) {
+          setSelectedChildState(null)
+          clearSelectedChild()
+          return
+        }
+
+        const savedChild = getSelectedChild()
+        const matchedSavedChild = savedChild
+          ? childrenList.find((item) => item.id === savedChild.id)
+          : null
+
+        const childToUse = matchedSavedChild || childrenList[0]
+
+        setSelectedChildState(childToUse)
+        setSelectedChild(childToUse)
+      } catch (error) {
+        console.error("Failed to load parent children:", error)
+        setParentChildren([])
+        setSelectedChildState(null)
+      } finally {
+        setLoadingChildren(false)
+      }
+    }
+
+    loadParentChildren()
+  }, [user])
+
+  useEffect(() => {
+    if (!checkedAuth || !user?.id) return
+
+    const socketUrl =
+      process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL || ""
+
+    if (!socketUrl) {
+      console.warn("Socket URL is not set")
+      return
+    }
+
+    socketRef.current = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+    })
+
+    socketRef.current.on("connect", () => {
+      console.log("Socket connected:", socketRef.current?.id)
+      socketRef.current?.emit("join", Number(user.id))
+    })
+
+    socketRef.current.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason)
+    })
+
+    socketRef.current.on("notification", (payload: SocketNotificationPayload) => {
+      const newNotification: NotificationItem = {
+        id: payload.id || Date.now(),
+        title: payload.title || "New Notification",
+        message: payload.message || "You have a new update.",
+        time: payload.time || "Just now",
+        read: false,
+        href: payload.href || "/dashboard/notifications",
+      }
+
+      setNotifications((prev) => [newNotification, ...prev])
+    })
+
+    return () => {
+      socketRef.current?.disconnect()
+      socketRef.current = null
+    }
+  }, [checkedAuth, user?.id])
+
   const unreadCount = useMemo(
     () => notifications.filter((item) => !item.read).length,
     [notifications]
@@ -196,22 +345,29 @@ export default function DashboardLayout({
   }, [user])
 
   const handleLogout = () => {
+    socketRef.current?.disconnect()
+    clearSelectedChild()
     logout()
     router.replace("/login")
   }
 
   const markAsRead = (id: number) => {
     setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, read: true } : item
-      )
+      prev.map((item) => (item.id === id ? { ...item, read: true } : item))
     )
   }
 
   const markAllAsRead = () => {
-    setNotifications((prev) =>
-      prev.map((item) => ({ ...item, read: true }))
-    )
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
+  }
+
+  const handleChildChange = (value: string) => {
+    const child = parentChildren.find((item) => item.id === Number(value))
+    if (!child) return
+
+    setSelectedChildState(child)
+    setSelectedChild(child)
+    window.location.reload()
   }
 
   const isActivePath = (href: string) => {
@@ -258,12 +414,15 @@ export default function DashboardLayout({
       : "Manage your school system"
 
   const userInitial = user?.name?.trim()?.charAt(0)?.toUpperCase() || "A"
+  const isParent = user?.role === "PARENT"
 
   if (!checkedAuth) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
         <div className="rounded-2xl bg-white px-6 py-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-600">Loading dashboard...</p>
+          <p className="text-sm font-medium text-slate-600">
+            Loading dashboard...
+          </p>
         </div>
       </div>
     )
@@ -271,7 +430,7 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <div className="md:hidden border-b border-blue-600 bg-blue-700 px-4 py-3 text-white shadow-sm">
+      <div className="border-b border-blue-600 bg-blue-700 px-4 py-3 text-white shadow-sm md:hidden">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white font-extrabold text-blue-700 shadow-sm">
@@ -279,7 +438,9 @@ export default function DashboardLayout({
             </div>
             <div>
               <h1 className="text-lg font-bold">EduNerve</h1>
-              <p className="text-xs text-blue-100">School Management</p>
+              <p className="text-xs text-blue-100">
+                {isParent ? "Parent Portal" : "School Management"}
+              </p>
             </div>
           </div>
 
@@ -379,10 +540,27 @@ export default function DashboardLayout({
             </button>
           </div>
         </div>
+
+        {isParent && parentChildren.length > 0 && (
+          <div className="mt-3">
+            <select
+              value={selectedChildState?.id || ""}
+              onChange={(e) => handleChildChange(e.target.value)}
+              className="w-full rounded-xl border border-blue-500 bg-blue-600 px-4 py-3 text-sm text-white outline-none"
+            >
+              {parentChildren.map((child) => (
+                <option key={child.id} value={child.id} className="text-slate-900">
+                  {child.name}
+                  {child.className ? ` (${child.className})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {sidebarOpen && (
-        <div className="md:hidden border-b border-blue-600 bg-blue-700 px-4 pb-4 shadow-sm">
+        <div className="border-b border-blue-600 bg-blue-700 px-4 pb-4 shadow-sm md:hidden">
           <div className="mb-4 rounded-2xl bg-blue-800 p-4 text-white">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white font-bold text-blue-700">
@@ -436,70 +614,76 @@ export default function DashboardLayout({
       )}
 
       <div className="flex min-h-screen">
-        <aside className="hidden w-72 flex-col bg-blue-700 text-white shadow-2xl md:flex">
-          <div className="border-b border-blue-600 p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl font-extrabold text-blue-700 shadow-sm">
-                E
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold">EduNerve</h1>
-                <p className="text-sm text-blue-100">School Management System</p>
-              </div>
-            </div>
+        {isParent ? (
+          <div className="hidden md:block">
+            <ParentSidebar />
           </div>
-
-          <div className="border-b border-blue-600 px-4 py-4">
-            <div className="rounded-2xl bg-blue-800 p-4 shadow-sm">
+        ) : (
+          <aside className="hidden w-72 flex-col bg-blue-700 text-white shadow-2xl md:flex">
+            <div className="border-b border-blue-600 p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white font-bold text-blue-700">
-                  {userInitial}
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-2xl font-extrabold text-blue-700 shadow-sm">
+                  E
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{user?.name || "Administrator"}</p>
-                  <p className="truncate text-sm text-blue-100">{user?.email || "No email"}</p>
-                  <p className="mt-1 text-xs font-medium text-blue-200">
-                    {user?.role || "ADMIN"}
-                  </p>
+                <div>
+                  <h1 className="text-2xl font-bold">EduNerve</h1>
+                  <p className="text-sm text-blue-100">School Management System</p>
                 </div>
               </div>
             </div>
-          </div>
 
-          <nav className="flex-1 p-4">
-            <div className="flex flex-col gap-2">
-              {visibleMenuItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link key={item.href} href={item.href} className={linkClass(item.href)}>
-                    <span className="flex items-center gap-3">
-                      <Icon className={iconClass(item.href)} />
-                      <span>{item.name}</span>
-                    </span>
-
-                    {item.showNotificationBadge && unreadCount > 0 ? (
-                      <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </span>
-                    ) : (
-                      <span className="h-2 w-2 rounded-full bg-transparent" />
-                    )}
-                  </Link>
-                )
-              })}
+            <div className="border-b border-blue-600 px-4 py-4">
+              <div className="rounded-2xl bg-blue-800 p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white font-bold text-blue-700">
+                    {userInitial}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{user?.name || "Administrator"}</p>
+                    <p className="truncate text-sm text-blue-100">{user?.email || "No email"}</p>
+                    <p className="mt-1 text-xs font-medium text-blue-200">
+                      {user?.role || "ADMIN"}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
-          </nav>
 
-          <div className="border-t border-blue-600 p-4">
-            <button
-              onClick={handleLogout}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-700"
-            >
-              <LogOut className="h-5 w-5" />
-              Logout
-            </button>
-          </div>
-        </aside>
+            <nav className="flex-1 p-4">
+              <div className="flex flex-col gap-2">
+                {visibleMenuItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Link key={item.href} href={item.href} className={linkClass(item.href)}>
+                      <span className="flex items-center gap-3">
+                        <Icon className={iconClass(item.href)} />
+                        <span>{item.name}</span>
+                      </span>
+
+                      {item.showNotificationBadge && unreadCount > 0 ? (
+                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white shadow-sm">
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      ) : (
+                        <span className="h-2 w-2 rounded-full bg-transparent" />
+                      )}
+                    </Link>
+                  )
+                })}
+              </div>
+            </nav>
+
+            <div className="border-t border-blue-600 p-4">
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-red-700"
+              >
+                <LogOut className="h-5 w-5" />
+                Logout
+              </button>
+            </div>
+          </aside>
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="hidden items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm md:flex">
@@ -509,6 +693,33 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-4">
+              {isParent && (
+                <div className="min-w-[260px]">
+                  <label className="mb-1 block text-xs font-medium text-slate-500">
+                    Selected Child
+                  </label>
+                  <select
+                    value={selectedChildState?.id || ""}
+                    onChange={(e) => handleChildChange(e.target.value)}
+                    disabled={loadingChildren || parentChildren.length === 0}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    {parentChildren.length === 0 ? (
+                      <option value="">
+                        {loadingChildren ? "Loading children..." : "No child available"}
+                      </option>
+                    ) : (
+                      parentChildren.map((child) => (
+                        <option key={child.id} value={child.id}>
+                          {child.name}
+                          {child.className ? ` (${child.className})` : ""}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+
               <div className="relative" ref={notificationRef}>
                 <button
                   type="button"

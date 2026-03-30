@@ -10,10 +10,10 @@ type RoleGuardProps = {
 }
 
 type StoredUser = {
-  id: number
-  name: string
-  email: string
-  role: string
+  id?: number | string
+  name?: string
+  email?: string
+  role?: string
   schoolId?: number | null
 }
 
@@ -48,7 +48,7 @@ export default function RoleGuard({
       }
 
       setAuthorized(true)
-    } catch (error) {
+    } catch {
       router.replace("/login")
     } finally {
       setChecking(false)

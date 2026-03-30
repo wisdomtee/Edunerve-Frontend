@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
-import RoleGuard from "@/components/RoleGuard" // ✅ ADD THIS
+import RoleGuard from "@/app/components/RoleGuard" // ✅ ADD THIS
 
 type School = {
   id: number

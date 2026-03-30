@@ -1,46 +1,44 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000"
 
-export function getToken() {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem("token") || ""
+const TOKEN_KEY = "token"
+const USER_KEY = "user"
+
+export const saveAuth = (token: string, user: any) => {
+  if (typeof window === "undefined") return
+  localStorage.setItem(TOKEN_KEY, token)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
-export function getAuthHeaders() {
+export const getToken = () => {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export const getUser = () => {
+  if (typeof window === "undefined") return null
+
+  const raw = localStorage.getItem(USER_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export const logout = () => {
+  if (typeof window === "undefined") return
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(USER_KEY)
+}
+
+export const getAuthHeaders = () => {
   const token = getToken()
 
   return {
     "Content-Type": "application/json",
-    Accept: "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
-}
-
-export async function apiRequest(
-  endpoint: string,
-  options: RequestInit = {}
-) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    credentials: "include",
-    ...options,
-    headers: {
-      ...getAuthHeaders(),
-      ...(options.headers || {}),
-    },
-  })
-
-  const text = await response.text()
-
-  let data: any = {}
-  try {
-    data = text ? JSON.parse(text) : {}
-  } catch {
-    data = { message: text }
-  }
-
-  if (!response.ok) {
-    throw new Error(data?.message || `Request failed: ${response.status}`)
-  }
-
-  return data
 }

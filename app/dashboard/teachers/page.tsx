@@ -1,312 +1,501 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { getToken } from "@/lib/auth"
+import { useEffect, useState } from "react"
+import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/auth"
 
-type Teacher = {
-  id: string
-  name: string
-  email: string
-  subject: string
-  schoolId: string
-  school?: {
-    id: string
-    name: string
-    address?: string
-  }
-  createdAt?: string
+type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT"
+
+type AppUser = {
+  id?: number
+  name?: string
+  email?: string
+  role?: UserRole | string
+  schoolId?: number | null
 }
 
 type School = {
-  id: string
+  id: number
   name: string
-  address?: string
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || ""
+type TeacherItem = {
+  id: number
+  name: string
+  email: string
+  phone?: string | null
+  subject?: string | null
+  schoolId: number
+  school?: {
+    id: number
+    name: string
+  } | null
+  classes?: Array<{
+    id: number
+    name: string
+  }>
+  user?: {
+    id: number
+    name: string
+    email: string
+    role: string
+  } | null
+}
 
 export default function TeachersPage() {
-  const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [user, setUser] = useState<AppUser | null>(null)
+  const [teachers, setTeachers] = useState<TeacherItem[]>([])
   const [schools, setSchools] = useState<School[]>([])
+
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [phone, setPhone] = useState("")
+  const [subject, setSubject] = useState("")
+  const [schoolId, setSchoolId] = useState("")
+
+  const [editingId, setEditingId] = useState<number | null>(null)
+
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    subject: "",
-    schoolId: "",
-  })
+  useEffect(() => {
+    const currentUser = getUser()
+    setUser(currentUser)
 
-  const token = useMemo(() => getToken(), [])
-
-  const fetchTeachers = async () => {
-    const res = await fetch(`${API_BASE_URL}/teachers`, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      throw new Error(data.message || "Failed to fetch teachers")
+    if (currentUser?.schoolId) {
+      setSchoolId(String(currentUser.schoolId))
     }
 
-    setTeachers(Array.isArray(data) ? data : [])
-  }
+    fetchData(currentUser)
+  }, [])
 
-  const fetchSchools = async () => {
-    const res = await fetch(`${API_BASE_URL}/schools`, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-
-    const data = await res.json()
-
-    if (!res.ok) {
-      throw new Error(data.message || "Failed to fetch schools")
-    }
-
-    setSchools(Array.isArray(data) ? data : [])
-  }
-
-  const loadPage = async () => {
+  const fetchData = async (currentUser?: AppUser | null) => {
     try {
       setLoading(true)
       setError("")
 
-      if (!token) {
-        throw new Error("No authentication token found. Please login again.")
+      const activeUser = currentUser || getUser()
+
+      const requests: Promise<Response>[] = [
+        fetch(`${API_BASE_URL}/teachers`, {
+          headers: getAuthHeaders(),
+        }),
+      ]
+
+      if (activeUser?.role === "SUPER_ADMIN") {
+        requests.push(
+          fetch(`${API_BASE_URL}/schools`, {
+            headers: getAuthHeaders(),
+          })
+        )
       }
 
-      await Promise.all([fetchTeachers(), fetchSchools()])
+      const responses = await Promise.all(requests)
+      const teachersRes = responses[0]
+      const schoolsRes = responses.length > 1 ? responses[1] : null
+
+      const teachersData = await teachersRes.json()
+
+      if (!teachersRes.ok) {
+        throw new Error(teachersData?.message || "Failed to fetch teachers")
+      }
+
+      if (Array.isArray(teachersData)) {
+        setTeachers(teachersData)
+      } else if (Array.isArray(teachersData.teachers)) {
+        setTeachers(teachersData.teachers)
+      } else {
+        setTeachers([])
+      }
+
+      if (schoolsRes) {
+        const schoolsData = await schoolsRes.json()
+
+        if (!schoolsRes.ok) {
+          throw new Error(schoolsData?.message || "Failed to fetch schools")
+        }
+
+        if (Array.isArray(schoolsData)) {
+          setSchools(schoolsData)
+        } else if (Array.isArray(schoolsData.schools)) {
+          setSchools(schoolsData.schools)
+        } else {
+          setSchools([])
+        }
+      } else {
+        setSchools([])
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to load page")
+      console.error("FETCH TEACHERS ERROR:", err)
+      setError(err.message || "Unable to load teachers page")
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => {
-    loadPage()
-  }, [])
+  const resetForm = () => {
+    setName("")
+    setEmail("")
+    setPassword("")
+    setPhone("")
+    setSubject("")
+    setEditingId(null)
+    setError("")
+    setSuccess("")
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setForm((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }))
+    if (user?.role === "SUPER_ADMIN") {
+      setSchoolId("")
+    } else {
+      setSchoolId(user?.schoolId ? String(user.schoolId) : "")
+    }
   }
 
-  const handleCreateTeacher = async (e: React.FormEvent) => {
+  const handleCreateOrUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
 
     try {
-      setSaving(true)
+      setSubmitting(true)
       setError("")
+      setSuccess("")
 
-      if (!token) {
-        throw new Error("No authentication token found. Please login again.")
+      const trimmedName = name.trim()
+      const trimmedEmail = email.trim().toLowerCase()
+      const trimmedPhone = phone.trim()
+      const trimmedSubject = subject.trim()
+
+      if (!trimmedName || !trimmedEmail) {
+        throw new Error("Name and email are required")
       }
 
-      const res = await fetch(`${API_BASE_URL}/teachers/create`, {
-        method: "POST",
+      if (!editingId && !password.trim()) {
+        throw new Error("Password is required when creating a teacher")
+      }
+
+      if (user?.role === "SUPER_ADMIN" && !schoolId) {
+        throw new Error("Please select a school")
+      }
+
+      const payload: any = {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone || null,
+        subject: trimmedSubject || null,
+      }
+
+      if (!editingId) {
+        payload.password = password.trim()
+      }
+
+      if (user?.role === "SUPER_ADMIN") {
+        payload.schoolId = Number(schoolId)
+      } else if (user?.schoolId) {
+        payload.schoolId = user.schoolId
+      }
+
+      const url = editingId
+        ? `${API_BASE_URL}/teachers/${editingId}`
+        : `${API_BASE_URL}/teachers/create`
+
+      const method = editingId ? "PUT" : "POST"
+
+      const res = await fetch(url, {
+        method,
         headers: {
+          ...getAuthHeaders(),
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to create teacher")
+        throw new Error(data?.message || "Failed to save teacher")
       }
 
-      setForm({
-        name: "",
-        email: "",
-        password: "",
-        subject: "",
-        schoolId: "",
+      setSuccess(
+        editingId
+          ? "Teacher updated successfully"
+          : "Teacher created successfully"
+      )
+
+      resetForm()
+      window.scrollTo({ top: 0, behavior: "smooth" })
+      await fetchData(user)
+    } catch (err: any) {
+      console.error("SAVE TEACHER ERROR:", err)
+      setError(err.message || "Unable to save teacher")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleEdit = (teacher: TeacherItem) => {
+    setEditingId(teacher.id)
+    setName(teacher.name || "")
+    setEmail(teacher.email || "")
+    setPassword("")
+    setPhone(teacher.phone || "")
+    setSubject(teacher.subject || "")
+    setSchoolId(String(teacher.schoolId || ""))
+    setSuccess("")
+    setError("")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handleDelete = async (id: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this teacher?"
+    )
+
+    if (!confirmed) return
+
+    try {
+      setError("")
+      setSuccess("")
+
+      const res = await fetch(`${API_BASE_URL}/teachers/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
       })
 
-      alert(data.message || "Teacher created successfully")
-      await fetchTeachers()
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to delete teacher")
+      }
+
+      setSuccess("Teacher deleted successfully")
+      await fetchData(user)
     } catch (err: any) {
-      setError(err.message || "Failed to create teacher")
-      alert(err.message || "Failed to create teacher")
-    } finally {
-      setSaving(false)
+      console.error("DELETE TEACHER ERROR:", err)
+      setError(err.message || "Unable to delete teacher")
     }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="grid gap-6 lg:grid-cols-3">
       <div className="rounded-2xl bg-white p-6 shadow">
-        <h1 className="text-2xl font-bold text-gray-800">Teachers</h1>
-        <p className="mt-2 text-gray-600">
-          Add and manage teachers in your school system.
-        </p>
-      </div>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">
+            {editingId ? "Edit Teacher" : "Add Teacher"}
+          </h2>
 
-      {error && (
-        <div className="rounded-xl bg-red-100 px-4 py-3 text-red-700">
-          {error}
+          {editingId && (
+            <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
+              Editing
+            </span>
+          )}
         </div>
-      )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-1">
-          <div className="rounded-2xl bg-white p-6 shadow">
-            <h2 className="mb-4 text-xl font-semibold text-gray-800">
-              Add Teacher
-            </h2>
-
-            <form onSubmit={handleCreateTeacher} className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={form.name}
-                  onChange={handleChange}
-                  placeholder="Enter teacher name"
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  name="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  placeholder="Enter teacher email"
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  placeholder="Enter password"
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Subject
-                </label>
-                <input
-                  type="text"
-                  name="subject"
-                  value={form.subject}
-                  onChange={handleChange}
-                  placeholder="Enter subject"
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  School
-                </label>
-                <select
-                  name="schoolId"
-                  value={form.schoolId}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
-                  required
-                >
-                  <option value="">Select school</option>
-                  {schools.map((school) => (
-                    <option key={school.id} value={school.id}>
-                      {school.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Creating..." : "Add Teacher"}
-              </button>
-            </form>
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+            {error}
           </div>
-        </div>
+        )}
 
-        <div className="lg:col-span-2">
-          <div className="rounded-2xl bg-white p-6 shadow">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-800">
-                Teachers List
-              </h2>
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700">
-                {teachers.length} Teachers
-              </span>
+        {success && (
+          <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-600">
+            {success}
+          </div>
+        )}
+
+        <form onSubmit={handleCreateOrUpdate} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Full Name
+            </label>
+            <input
+              type="text"
+              placeholder="Enter teacher name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Email
+            </label>
+            <input
+              type="email"
+              placeholder="Enter teacher email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+              required
+            />
+          </div>
+
+          {!editingId && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <input
+                type="password"
+                placeholder="Create password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+                required
+              />
             </div>
+          )}
 
-            {loading ? (
-              <p className="text-gray-600">Loading teachers...</p>
-            ) : teachers.length === 0 ? (
-              <p className="text-gray-600">No teachers found.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse">
-                  <thead>
-                    <tr className="bg-gray-100 text-left">
-                      <th className="border px-4 py-3">Name</th>
-                      <th className="border px-4 py-3">Email</th>
-                      <th className="border px-4 py-3">Subject</th>
-                      <th className="border px-4 py-3">School</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {teachers.map((teacher) => (
-                      <tr key={teacher.id}>
-                        <td className="border px-4 py-3">{teacher.name}</td>
-                        <td className="border px-4 py-3">{teacher.email}</td>
-                        <td className="border px-4 py-3">{teacher.subject}</td>
-                        <td className="border px-4 py-3">
-                          {teacher.school?.name || "N/A"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Phone
+            </label>
+            <input
+              type="text"
+              placeholder="Enter phone number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Subject
+            </label>
+            <input
+              type="text"
+              placeholder="Enter subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+            />
+          </div>
+
+          {user?.role === "SUPER_ADMIN" && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                School
+              </label>
+              <select
+                value={schoolId}
+                onChange={(e) => setSchoolId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none focus:border-blue-500"
+                required
+                disabled={!!editingId}
+              >
+                <option value="">Select School</option>
+                {schools.map((school) => (
+                  <option key={school.id} value={school.id}>
+                    {school.name}
+                  </option>
+                ))}
+              </select>
+              {editingId && (
+                <p className="mt-1 text-xs text-gray-500">
+                  School cannot be changed during edit.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-3 text-white transition hover:bg-blue-700 disabled:opacity-60"
+            >
+              {submitting
+                ? editingId
+                  ? "Updating..."
+                  : "Creating..."
+                : editingId
+                ? "Update Teacher"
+                : "Create Teacher"}
+            </button>
+
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="rounded-lg bg-gray-200 px-4 py-3 text-gray-700 transition hover:bg-gray-300"
+              >
+                Cancel
+              </button>
             )}
           </div>
+        </form>
+      </div>
+
+      <div className="rounded-2xl bg-white p-6 shadow lg:col-span-2">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-800">
+            Teachers ({teachers.length})
+          </h2>
+
+          {!loading && teachers.length > 0 && (
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              Active Records
+            </span>
+          )}
         </div>
+
+        {loading ? (
+          <p className="text-gray-500">Loading teachers...</p>
+        ) : teachers.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center">
+            <p className="text-gray-500">No teachers found.</p>
+            <p className="mt-1 text-sm text-gray-400">
+              Add your first teacher using the form on the left.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {teachers.map((teacher) => (
+              <div
+                key={teacher.id}
+                className="rounded-xl border border-gray-200 p-4 transition hover:shadow-sm"
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-lg font-bold text-gray-800">
+                      {teacher.name}
+                    </p>
+                    <p className="text-sm text-gray-600">{teacher.email}</p>
+                    <p className="text-sm text-gray-500">
+                      Subject: {teacher.subject || "Not assigned"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Phone: {teacher.phone || "No phone"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      School: {teacher.school?.name || "No school"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Classes: {teacher.classes?.length || 0}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(teacher)}
+                      className="rounded-lg bg-yellow-500 px-4 py-2 text-sm text-white transition hover:bg-yellow-600"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(teacher.id)}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white transition hover:bg-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

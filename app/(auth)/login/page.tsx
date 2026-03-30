@@ -1,8 +1,21 @@
 "use client"
 
-import { useState } from "react"
+import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
-import { API_BASE_URL, saveAuth } from "@/lib/auth"
+import Link from "next/link"
+
+type LoginResponse = {
+  token?: string
+  user?: {
+    id?: string
+    name?: string
+    email?: string
+    role?: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT" | string
+  }
+  message?: string
+}
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -10,112 +23,128 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
-
-    if (!email || !password) {
-      alert("Please enter email and password")
-      return
-    }
+    setLoading(true)
+    setError("")
 
     try {
-      setLoading(true)
-
       const res = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+        }),
       })
 
-      const data = await res.json().catch(() => ({}))
+      const data: LoginResponse = await res.json()
 
       if (!res.ok) {
-        alert(data.message || "Login failed")
+        throw new Error(data.message || "Login failed")
+      }
+
+      if (!data.token || !data.user) {
+        throw new Error("Invalid login response from server")
+      }
+
+      localStorage.setItem("token", data.token)
+      localStorage.setItem("user", JSON.stringify(data.user))
+
+      const role = data.user.role
+
+      if (role === "PARENT") {
+        router.replace("/dashboard/parents")
         return
       }
 
-      if (!data.token) {
-        alert("Login succeeded but no token was returned")
+      if (role === "SUPER_ADMIN") {
+        router.replace("/dashboard")
         return
       }
 
-      if (!data.user || !data.user.role) {
-        alert("Login succeeded but user role was not returned")
+      if (role === "SCHOOL_ADMIN") {
+        router.replace("/dashboard")
         return
       }
 
-      saveAuth(data.token, data.user)
-
-      console.log("TOKEN SAVED:", localStorage.getItem("token"))
-      console.log("USER SAVED:", localStorage.getItem("user"))
-
-      if (data.user.role === "SUPER_ADMIN") {
-        router.push("/dashboard/super-admin")
-      } else if (data.user.role === "SCHOOL_ADMIN") {
-        router.push("/dashboard/admin")
-      } else if (data.user.role === "TEACHER") {
-        router.push("/dashboard/teacher")
-      } else if (data.user.role === "PARENT") {
-        router.push("/dashboard/parent")
-      } else {
-        router.push("/dashboard")
+      if (role === "TEACHER") {
+        router.replace("/dashboard")
+        return
       }
-    } catch (error: any) {
-      console.error("LOGIN ERROR:", error)
-      alert(error.message || "Something went wrong")
+
+      router.replace("/dashboard")
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong during login"
+      setError(message)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome Back</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Sign in to your EduNerve account
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
+        <div className="mb-6 text-center">
+          <h1 className="text-3xl font-bold text-blue-700">EduNerve</h1>
+          <p className="mt-2 text-sm text-slate-500">Login to your account</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Email Address
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Email
             </label>
             <input
               type="email"
-              placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              required
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
+              placeholder="Enter your email"
             />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-slate-700">
               Password
             </label>
             <input
               type="password"
-              placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              required
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
+              placeholder="Enter your password"
             />
           </div>
+
+          {error && (
+            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
+
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Back to{" "}
+          <Link href="/" className="font-medium text-blue-600 hover:text-blue-700">
+            home
+          </Link>
+        </p>
       </div>
     </div>
   )
