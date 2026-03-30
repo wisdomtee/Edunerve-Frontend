@@ -71,10 +71,9 @@ export default function SchoolsPage() {
 
       const res = await fetch(`${API_BASE_URL}/schools/create`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeaders(),
-        },
+       
+          headers: getAuthHeaders(),
+        
         body: JSON.stringify(formData),
       })
 
