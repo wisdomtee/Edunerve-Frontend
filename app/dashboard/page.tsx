@@ -523,6 +523,11 @@ export default function DashboardHomePage() {
       description: "Review or upload term performance records for students.",
       href: "/dashboard/results",
     },
+    {
+      title: "Fees Management",
+      description: "Create invoices, track payments, and manage school fees.",
+      href: "/dashboard/fees",
+    },
   ]
 
   const schoolAdminActionNotes = [
@@ -697,6 +702,12 @@ export default function DashboardHomePage() {
                 className="rounded-xl border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
               >
                 Review Results
+              </Link>
+              <Link
+                href="/dashboard/fees"
+                className="rounded-xl border border-white/30 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Fees Management
               </Link>
             </div>
           )}
@@ -1295,6 +1306,12 @@ export default function DashboardHomePage() {
                   className="rounded-xl bg-blue-600 px-4 py-3 text-white"
                 >
                   View Results
+                </Link>
+                <Link
+                  href="/dashboard/fees"
+                  className="rounded-xl bg-emerald-600 px-4 py-3 text-white"
+                >
+                  Fees Management
                 </Link>
               </div>
             </div>

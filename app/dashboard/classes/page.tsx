@@ -1,14 +1,21 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
+
+type UserRole =
+  | "SUPER_ADMIN"
+  | "SCHOOL_ADMIN"
+  | "TEACHER"
+  | "STUDENT"
+  | "PARENT"
 
 type User = {
   id: number
   name: string
   email: string
-  role: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "STUDENT" | "PARENT"
+  role: UserRole
   schoolId?: number
 }
 
@@ -66,8 +73,14 @@ export default function ClassesPage() {
     teacherId: "",
   })
 
-  const isAdmin =
-    user?.role === "SCHOOL_ADMIN" || user?.role === "SUPER_ADMIN"
+  const isSuperAdmin = user?.role === "SUPER_ADMIN"
+  const isSchoolAdmin = user?.role === "SCHOOL_ADMIN"
+  const isTeacher = user?.role === "TEACHER"
+
+  const canManageClasses = isSuperAdmin || isSchoolAdmin
+  const canCreateClass = canManageClasses
+  const canDeleteClass = canManageClasses
+  const canAssignTeacher = canManageClasses
 
   useEffect(() => {
     setUser(getStoredUser())
@@ -87,7 +100,8 @@ export default function ClassesPage() {
       throw new Error(data?.message || "Failed to fetch classes")
     }
 
-    setClasses(Array.isArray(data) ? data : data.classes || [])
+    const classList = Array.isArray(data) ? data : data.classes || []
+    setClasses(classList)
   }
 
   const fetchTeachers = async (currentUser: User | null) => {
@@ -143,6 +157,12 @@ export default function ClassesPage() {
     fetchData()
   }, [])
 
+  const visibleClasses = useMemo(() => {
+    // Backend should already restrict teacher data to only their own classes.
+    // Keep frontend simple and read-only for teachers.
+    return classes
+  }, [classes])
+
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -151,7 +171,7 @@ export default function ClassesPage() {
       setError("")
       setSuccess("")
 
-      if (!isAdmin) {
+      if (!canCreateClass) {
         throw new Error("Only admins can create classes")
       }
 
@@ -159,7 +179,7 @@ export default function ClassesPage() {
         throw new Error("Class name is required")
       }
 
-      const payload: any = {
+      const payload: { name: string; teacherId?: number } = {
         name: form.name.trim(),
       }
 
@@ -213,7 +233,7 @@ export default function ClassesPage() {
       setError("")
       setSuccess("")
 
-      if (!isAdmin) {
+      if (!canDeleteClass) {
         throw new Error("Only admins can delete classes")
       }
 
@@ -249,14 +269,16 @@ export default function ClassesPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Classes</h1>
           <p className="mt-1 text-gray-600">
-            {isAdmin
+            {canManageClasses
               ? "Manage classes and assign class teachers"
-              : "View your assigned classes"}
+              : isTeacher
+              ? "View only the classes assigned to you"
+              : "View classes"}
           </p>
         </div>
 
@@ -282,7 +304,7 @@ export default function ClassesPage() {
         </div>
       )}
 
-      {isAdmin && (
+      {canCreateClass && (
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-xl font-semibold text-gray-900">Create Class</h2>
 
@@ -305,25 +327,27 @@ export default function ClassesPage() {
               />
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Class Teacher
-              </label>
-              <select
-                value={form.teacherId}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, teacherId: e.target.value }))
-                }
-                className="w-full rounded-lg border px-3 py-2 outline-none"
-              >
-                <option value="">Select teacher</option>
-                {teachers.map((teacher) => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {canAssignTeacher && (
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Class Teacher
+                </label>
+                <select
+                  value={form.teacherId}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, teacherId: e.target.value }))
+                  }
+                  className="w-full rounded-lg border px-3 py-2 outline-none"
+                >
+                  <option value="">Select teacher</option>
+                  {teachers.map((teacher) => (
+                    <option key={teacher.id} value={teacher.id}>
+                      {teacher.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <button
@@ -340,13 +364,15 @@ export default function ClassesPage() {
 
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">Class List</h2>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {isTeacher ? "My Classes" : "Class List"}
+          </h2>
           <span className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600">
-            {classes.length} class{classes.length === 1 ? "" : "es"}
+            {visibleClasses.length} class{visibleClasses.length === 1 ? "" : "es"}
           </span>
         </div>
 
-        {classes.length > 0 ? (
+        {visibleClasses.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse">
               <thead>
@@ -360,7 +386,7 @@ export default function ClassesPage() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
                     Date Created
                   </th>
-                  {isAdmin && (
+                  {canDeleteClass && (
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
                       Action
                     </th>
@@ -368,7 +394,7 @@ export default function ClassesPage() {
                 </tr>
               </thead>
               <tbody>
-                {classes.map((classItem) => (
+                {visibleClasses.map((classItem) => (
                   <tr key={classItem.id} className="border-b">
                     <td className="px-4 py-3 text-sm text-gray-800">
                       {classItem.name || "—"}
@@ -382,7 +408,7 @@ export default function ClassesPage() {
                         : "—"}
                     </td>
 
-                    {isAdmin && (
+                    {canDeleteClass && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleDeleteClass(classItem.id)}
@@ -399,7 +425,11 @@ export default function ClassesPage() {
             </table>
           </div>
         ) : (
-          <p className="text-gray-500">No classes found.</p>
+          <p className="text-gray-500">
+            {isTeacher
+              ? "No classes assigned to you yet."
+              : "No classes found."}
+          </p>
         )}
       </div>
     </div>

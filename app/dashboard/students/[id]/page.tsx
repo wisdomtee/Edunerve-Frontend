@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
-import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
+import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/api"
 
 type School = {
   id: number
@@ -30,6 +30,7 @@ type Parent = {
   name: string
   email: string
   phone?: string | null
+  schoolId?: number | null
 }
 
 type Result = {
@@ -51,9 +52,13 @@ type Attendance = {
 type Student = {
   id: number
   name: string
+  studentId?: string | null
   gender?: string | null
   createdAt?: string
+  updatedAt?: string
   parentId?: number | null
+  classId?: number | null
+  schoolId?: number | null
   parent?: Parent | null
   school?: School
   class?: ClassType
@@ -85,8 +90,8 @@ type User = {
   id: number
   name: string
   email: string
-  role: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "STUDENT" | "PARENT"
-  schoolId?: number
+  role: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT" | string
+  schoolId?: number | null
 }
 
 async function parseResponse(response: Response) {
@@ -96,34 +101,6 @@ async function parseResponse(response: Response) {
     return text ? JSON.parse(text) : {}
   } catch {
     return { message: text }
-  }
-}
-
-function getStoredUser(): User | null {
-  if (typeof window === "undefined") return null
-
-  const raw = localStorage.getItem("user")
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
-}
-
-function getToken() {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem("token") || ""
-}
-
-function getJsonHeaders() {
-  const token = getToken()
-
-  return {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   }
 }
 
@@ -174,7 +151,6 @@ export default function StudentDetailsPage() {
     const response = await fetch(`${API_BASE_URL}/students/${id}`, {
       method: "GET",
       headers: getAuthHeaders(),
-      credentials: "include",
       cache: "no-store",
     })
 
@@ -192,7 +168,6 @@ export default function StudentDetailsPage() {
     const response = await fetch(`${API_BASE_URL}/subjects`, {
       method: "GET",
       headers: getAuthHeaders(),
-      credentials: "include",
       cache: "no-store",
     })
 
@@ -212,10 +187,9 @@ export default function StudentDetailsPage() {
       return
     }
 
-    const response = await fetch(`${API_BASE_URL}/parents`, {
+    const response = await fetch(`${API_BASE_URL}/students/parents`, {
       method: "GET",
       headers: getAuthHeaders(),
-      credentials: "include",
       cache: "no-store",
     })
 
@@ -233,7 +207,6 @@ export default function StudentDetailsPage() {
     const response = await fetch(`${API_BASE_URL}/students/${id}/ranking`, {
       method: "GET",
       headers: getAuthHeaders(),
-      credentials: "include",
       cache: "no-store",
     })
 
@@ -250,7 +223,7 @@ export default function StudentDetailsPage() {
   useEffect(() => {
     if (!id) return
 
-    const storedUser = getStoredUser()
+    const storedUser = getUser()
     setUser(storedUser)
 
     const loadPage = async () => {
@@ -259,13 +232,15 @@ export default function StudentDetailsPage() {
         setError("")
         setSuccess("")
 
+        const canLoadParents =
+          storedUser?.role === "SCHOOL_ADMIN" ||
+          storedUser?.role === "SUPER_ADMIN"
+
         await Promise.all([
           fetchStudent(),
           fetchSubjects(),
           fetchRanking(),
-          storedUser?.role === "SCHOOL_ADMIN" || storedUser?.role === "SUPER_ADMIN"
-            ? fetchParents()
-            : Promise.resolve(),
+          canLoadParents ? fetchParents() : Promise.resolve(),
         ])
       } catch (err: any) {
         setError(err.message || "Something went wrong")
@@ -275,6 +250,7 @@ export default function StudentDetailsPage() {
     }
 
     loadPage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const initials = useMemo(() => {
@@ -347,13 +323,12 @@ export default function StudentDetailsPage() {
       setSuccess("")
 
       const response = await fetch(
-        `${API_BASE_URL}/parents/${Number(selectedParentId)}/assign-student`,
+        `${API_BASE_URL}/students/assign-parent/${student.id}`,
         {
           method: "PUT",
-          headers: getJsonHeaders(),
-          credentials: "include",
+          headers: getAuthHeaders(),
           body: JSON.stringify({
-            studentId: student.id,
+            parentId: Number(selectedParentId),
           }),
         }
       )
@@ -420,8 +395,7 @@ export default function StudentDetailsPage() {
 
       const response = await fetch(`${API_BASE_URL}/results`, {
         method: "POST",
-        headers: getJsonHeaders(),
-        credentials: "include",
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       })
 
@@ -461,7 +435,6 @@ export default function StudentDetailsPage() {
       const response = await fetch(`${API_BASE_URL}/results/${resultId}`, {
         method: "DELETE",
         headers: getAuthHeaders(),
-        credentials: "include",
       })
 
       const data = await parseResponse(response)
@@ -532,27 +505,19 @@ export default function StudentDetailsPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Student Details</h1>
           <p className="mt-1 text-gray-600">
-            View full student profile, performance, attendance, ranking, and parent assignment
+            View full student profile, performance, attendance, ranking, and
+            parent assignment
           </p>
         </div>
 
         <div className="flex flex-wrap gap-3">
           {canEdit && (
-            <>
-              <Link
-                href={`/dashboard/students/${id}/edit`}
-                className="rounded-lg bg-yellow-500 px-4 py-2 text-white hover:bg-yellow-600"
-              >
-                Edit
-              </Link>
-
-              <Link
-                href={`/dashboard/students/${id}/report`}
-                className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
-              >
-                Report
-              </Link>
-            </>
+            <Link
+              href={`/dashboard/students/${id}/report`}
+              className="rounded-lg bg-green-600 px-4 py-2 text-white hover:bg-green-700"
+            >
+              Report
+            </Link>
           )}
 
           <Link href="/dashboard/students" className="rounded-lg border px-4 py-2">
@@ -613,7 +578,8 @@ export default function StudentDetailsPage() {
             </div>
           ) : (
             <div className="mt-4 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-              No parents found yet. Create a parent account first, then return here to assign.
+              No parents found yet. Create a parent account first, then return
+              here to assign.
             </div>
           )}
 
@@ -651,13 +617,14 @@ export default function StudentDetailsPage() {
             <h2 className="mt-4 text-2xl font-semibold text-gray-900">
               {student.name}
             </h2>
+
             <p className="mt-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700">
               Position: {positionLabel}
             </p>
           </div>
 
           <div className="mt-6 space-y-4">
-            <InfoRow label="Student ID" value={String(student.id)} />
+            <InfoRow label="Student ID" value={student.studentId || String(student.id)} />
             <InfoRow label="Gender" value={student.gender || "—"} />
             <InfoRow label="Class" value={student.class?.name || "—"} />
             <InfoRow label="School" value={student.school?.name || "—"} />
@@ -685,7 +652,10 @@ export default function StudentDetailsPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <DetailCard label="Full Name" value={student.name} />
-              <DetailCard label="Student ID" value={String(student.id)} />
+              <DetailCard
+                label="Student ID"
+                value={student.studentId || String(student.id)}
+              />
               <DetailCard label="Gender" value={student.gender || "—"} />
               <DetailCard label="Class" value={student.class?.name || "—"} />
               <DetailCard label="School" value={student.school?.name || "—"} />
@@ -965,7 +935,17 @@ export default function StudentDetailsPage() {
                           {new Date(record.date).toLocaleDateString()}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-800">
-                          {record.status}
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${
+                              record.status?.toLowerCase() === "present"
+                                ? "bg-green-100 text-green-700"
+                                : record.status?.toLowerCase() === "late"
+                                ? "bg-yellow-100 text-yellow-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {record.status}
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -974,6 +954,73 @@ export default function StudentDetailsPage() {
               </div>
             ) : (
               <p className="text-gray-500">No attendance records available yet.</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-xl font-semibold text-gray-900">
+              Class Ranking
+            </h3>
+
+            {!ranking ? (
+              <p className="text-gray-500">Ranking not available.</p>
+            ) : ranking.ranking.length === 0 ? (
+              <p className="text-gray-500">
+                {ranking.message || "No ranking data available."}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Position
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Student ID
+                      </th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">
+                        Average Score
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ranking.ranking.map((item, index) => {
+                      const isCurrent = item.id === student.id
+
+                      return (
+                        <tr
+                          key={item.id}
+                          className={`border-b ${
+                            isCurrent ? "bg-blue-50" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                            {getOrdinal(index + 1)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-800">
+                            {item.name}
+                            {isCurrent && (
+                              <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">
+                                This student
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-800">
+                            {item.studentId}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-800">
+                            {item.averageScore.toFixed(2)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>

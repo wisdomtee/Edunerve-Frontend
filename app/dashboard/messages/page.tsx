@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import { API_BASE_URL, getAuthHeaders, getToken, getUser } from "@/lib/api"
 
 type UserSummary = {
   id: number
@@ -31,19 +32,17 @@ type CurrentUser = {
   email: string
   role: string
   schoolId?: number | null
+  token?: string
 }
 
 type MessageReadPayload = {
   messageId: number
-  receiverId: number
+  receiverId?: number
 }
 
 type MessageDeletedPayload = {
   messageId: number
 }
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000"
 
 export default function MessagesPage() {
   const [messages, setMessages] = useState<MessageItem[]>([])
@@ -57,25 +56,13 @@ export default function MessagesPage() {
   const [subject, setSubject] = useState("")
   const [sending, setSending] = useState(false)
   const [socketConnected, setSocketConnected] = useState(false)
+  const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null)
 
-  const token = useMemo(() => {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem("token")
-  }, [])
+  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const socketRef = useRef<Socket | null>(null)
 
-  const currentUser = useMemo<CurrentUser | null>(() => {
-    if (typeof window === "undefined") return null
-    const storedUser = localStorage.getItem("user")
-    return storedUser ? JSON.parse(storedUser) : null
-  }, [])
-
-  const authHeaders = useMemo(
-    () => ({
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token || ""}`,
-    }),
-    [token]
-  )
+  const token = useMemo(() => getToken(), [])
+  const currentUser = useMemo<CurrentUser | null>(() => getUser(), [])
 
   const fetchMessages = async (tab: "all" | "inbox" | "sent" = activeTab) => {
     try {
@@ -93,10 +80,10 @@ export default function MessagesPage() {
         },
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => [])
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to fetch messages")
+        throw new Error(data?.message || "Failed to fetch messages")
       }
 
       setMessages(Array.isArray(data) ? data : [])
@@ -113,20 +100,19 @@ export default function MessagesPage() {
       setError("")
 
       const res = await fetch(`${API_BASE_URL}/users`, {
-        headers: {
-          Authorization: `Bearer ${token || ""}`,
-        },
+        headers: getAuthHeaders(),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => [])
 
       if (!res.ok) {
-        throw new Error(data.error || data.message || "Failed to fetch users")
+        throw new Error(data?.error || data?.message || "Failed to fetch users")
       }
 
       const allUsers = Array.isArray(data) ? data : []
+
       const filteredUsers = currentUser
-        ? allUsers.filter((user) => user.id !== currentUser.id)
+        ? allUsers.filter((user: UserSummary) => user.id !== currentUser.id)
         : allUsers
 
       setUsers(filteredUsers)
@@ -134,6 +120,50 @@ export default function MessagesPage() {
       setError(err instanceof Error ? err.message : "Failed to fetch users")
     } finally {
       setUsersLoading(false)
+    }
+  }
+
+  const fetchConversation = async (otherUserId: number) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/messages/conversation/${otherUserId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token || ""}`,
+          },
+        }
+      )
+
+      const data = await res.json().catch(() => [])
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to fetch conversation")
+      }
+
+      const conversation = Array.isArray(data) ? data : []
+
+      setMessages((prev) => {
+        const others = prev.filter(
+          (msg) =>
+            !(
+              (msg.senderId === currentUser?.id &&
+                msg.receiverId === otherUserId) ||
+              (msg.senderId === otherUserId &&
+                msg.receiverId === currentUser?.id)
+            )
+        )
+
+        const merged = [...others, ...conversation]
+        const uniqueMap = new Map<number, MessageItem>()
+
+        merged.forEach((msg) => uniqueMap.set(msg.id, msg))
+
+        return Array.from(uniqueMap.values())
+      })
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to fetch conversation"
+      )
     }
   }
 
@@ -148,11 +178,22 @@ export default function MessagesPage() {
   }, [])
 
   useEffect(() => {
-    if (!currentUser) return
+    if (!selectedUserId) return
+    fetchConversation(selectedUserId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId])
+
+  useEffect(() => {
+    if (!currentUser || !token) return
 
     const socketInstance: Socket = io(API_BASE_URL, {
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
+      auth: {
+        token,
+      },
     })
+
+    socketRef.current = socketInstance
 
     socketInstance.on("connect", () => {
       setSocketConnected(true)
@@ -170,6 +211,19 @@ export default function MessagesPage() {
       })
     })
 
+    socketInstance.on("message_sent", (message: MessageItem) => {
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev
+        return [message, ...prev]
+      })
+    })
+
+    socketInstance.on("message_updated", (message: MessageItem) => {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === message.id ? message : m))
+      )
+    })
+
     socketInstance.on("message_read", ({ messageId }: MessageReadPayload) => {
       setMessages((prev) =>
         prev.map((m) => (m.id === messageId ? { ...m, isRead: true } : m))
@@ -185,8 +239,9 @@ export default function MessagesPage() {
 
     return () => {
       socketInstance.disconnect()
+      socketRef.current = null
     }
-  }, [currentUser])
+  }, [currentUser, token])
 
   const conversationMessages = useMemo(() => {
     if (!selectedUserId || !currentUser) return []
@@ -209,6 +264,14 @@ export default function MessagesPage() {
     return users.find((user) => user.id === selectedUserId) || null
   }, [users, selectedUserId])
 
+  const unreadInboxCount = useMemo(() => {
+    if (!currentUser) return 0
+
+    return messages.filter(
+      (m) => m.receiverId === currentUser.id && !m.isRead
+    ).length
+  }, [messages, currentUser])
+
   useEffect(() => {
     if (!selectedUserId || !currentUser || !token) return
 
@@ -223,7 +286,7 @@ export default function MessagesPage() {
         await Promise.all(
           unreadMessages.map((msg) =>
             fetch(`${API_BASE_URL}/messages/${msg.id}/read`, {
-              method: "PUT",
+              method: "PATCH",
               headers: {
                 Authorization: `Bearer ${token}`,
               },
@@ -246,6 +309,10 @@ export default function MessagesPage() {
     markMessagesAsRead()
   }, [selectedUserId, conversationMessages, currentUser, token])
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [conversationMessages])
+
   const handleSendMessage = async () => {
     if (!selectedUserId || !newMessage.trim()) return
 
@@ -255,7 +322,7 @@ export default function MessagesPage() {
 
       const res = await fetch(`${API_BASE_URL}/messages/send`, {
         method: "POST",
-        headers: authHeaders,
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           receiverId: selectedUserId,
           subject: subject.trim() || null,
@@ -263,10 +330,10 @@ export default function MessagesPage() {
         }),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        throw new Error(data.message || "Failed to send message")
+        throw new Error(data?.message || "Failed to send message")
       }
 
       setMessages((prev) => {
@@ -283,11 +350,42 @@ export default function MessagesPage() {
     }
   }
 
+  const handleDeleteMessage = async (messageId: number) => {
+    try {
+      setDeletingMessageId(messageId)
+      setError("")
+
+      const res = await fetch(`${API_BASE_URL}/messages/${messageId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token || ""}`,
+        },
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to delete message")
+      }
+
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete message")
+    } finally {
+      setDeletingMessageId(null)
+    }
+  }
+
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleString([], {
       dateStyle: "medium",
       timeStyle: "short",
     })
+  }
+
+  const handleSelectUser = async (userId: number) => {
+    setSelectedUserId(userId)
+    setError("")
   }
 
   return (
@@ -310,6 +408,7 @@ export default function MessagesPage() {
         >
           All
         </button>
+
         <button
           onClick={() => setActiveTab("inbox")}
           className={`rounded-xl px-4 py-2 text-sm font-medium ${
@@ -319,7 +418,13 @@ export default function MessagesPage() {
           }`}
         >
           Inbox
+          {unreadInboxCount > 0 && (
+            <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] text-white">
+              {unreadInboxCount}
+            </span>
+          )}
         </button>
+
         <button
           onClick={() => setActiveTab("sent")}
           className={`rounded-xl px-4 py-2 text-sm font-medium ${
@@ -356,16 +461,30 @@ export default function MessagesPage() {
                     !m.isRead
                 ).length
 
+                const lastMessage = messages
+                  .filter(
+                    (m) =>
+                      (m.senderId === user.id &&
+                        m.receiverId === currentUser?.id) ||
+                      (m.senderId === currentUser?.id &&
+                        m.receiverId === user.id)
+                  )
+                  .sort(
+                    (a, b) =>
+                      new Date(b.createdAt).getTime() -
+                      new Date(a.createdAt).getTime()
+                  )[0]
+
                 return (
                   <button
                     key={user.id}
-                    onClick={() => setSelectedUserId(user.id)}
+                    onClick={() => handleSelectUser(user.id)}
                     className={`w-full border-b p-4 text-left transition hover:bg-gray-50 ${
                       selectedUserId === user.id ? "bg-blue-50" : ""
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="truncate font-medium text-gray-900">
                           {user.name}
                         </div>
@@ -375,6 +494,11 @@ export default function MessagesPage() {
                         <div className="mt-1 text-xs text-blue-600">
                           {user.role}
                         </div>
+                        {lastMessage && (
+                          <div className="mt-1 truncate text-xs text-gray-400">
+                            {lastMessage.content}
+                          </div>
+                        )}
                       </div>
 
                       {unreadCount > 0 && (
@@ -415,7 +539,11 @@ export default function MessagesPage() {
               </div>
             )}
 
-            {!selectedUser ? (
+            {loading ? (
+              <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                Loading messages...
+              </div>
+            ) : !selectedUser ? (
               <div className="flex h-full items-center justify-center text-sm text-gray-500">
                 Choose a user from the left to view messages
               </div>
@@ -424,42 +552,70 @@ export default function MessagesPage() {
                 No messages in this conversation yet
               </div>
             ) : (
-              conversationMessages.map((message) => {
-                const isMine = message.senderId === currentUser?.id
+              <>
+                {conversationMessages.map((message) => {
+                  const isMine = message.senderId === currentUser?.id
 
-                return (
-                  <div
-                    key={message.id}
-                    className={`flex ${isMine ? "justify-end" : "justify-start"}`}
-                  >
+                  return (
                     <div
-                      className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
-                        isMine
-                          ? "bg-blue-600 text-white"
-                          : "border bg-white text-gray-900"
+                      key={message.id}
+                      className={`flex ${
+                        isMine ? "justify-end" : "justify-start"
                       }`}
                     >
-                      {message.subject && (
-                        <div
-                          className={`mb-1 text-xs font-semibold ${
-                            isMine ? "text-blue-100" : "text-blue-600"
-                          }`}
-                        >
-                          {message.subject}
-                        </div>
-                      )}
-                      <p className="text-sm leading-6">{message.content}</p>
                       <div
-                        className={`mt-2 text-[11px] ${
-                          isMine ? "text-blue-100" : "text-gray-400"
+                        className={`max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${
+                          isMine
+                            ? "bg-blue-600 text-white"
+                            : "border bg-white text-gray-900"
                         }`}
                       >
-                        {formatTime(message.createdAt)}
+                        {message.subject && (
+                          <div
+                            className={`mb-1 text-xs font-semibold ${
+                              isMine ? "text-blue-100" : "text-blue-600"
+                            }`}
+                          >
+                            {message.subject}
+                          </div>
+                        )}
+
+                        <p className="text-sm leading-6">{message.content}</p>
+
+                        <div className="mt-2 flex items-center justify-between gap-4">
+                          <div
+                            className={`text-[11px] ${
+                              isMine ? "text-blue-100" : "text-gray-400"
+                            }`}
+                          >
+                            {formatTime(message.createdAt)}
+                            {isMine && (
+                              <span className="ml-2">
+                                {message.isRead ? "• Read" : "• Sent"}
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteMessage(message.id)}
+                            disabled={deletingMessageId === message.id}
+                            className={`text-[11px] ${
+                              isMine
+                                ? "text-blue-100 hover:text-white"
+                                : "text-red-500 hover:text-red-700"
+                            } disabled:opacity-50`}
+                          >
+                            {deletingMessageId === message.id
+                              ? "Deleting..."
+                              : "Delete"}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })
+                  )
+                })}
+                <div ref={bottomRef} />
+              </>
             )}
           </div>
 
@@ -483,6 +639,7 @@ export default function MessagesPage() {
                   rows={3}
                   className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
                 />
+
                 <button
                   onClick={handleSendMessage}
                   disabled={sending || !newMessage.trim()}

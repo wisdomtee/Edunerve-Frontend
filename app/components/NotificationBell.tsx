@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { io, Socket } from "socket.io-client"
 import { Bell } from "lucide-react"
 import Link from "next/link"
-import { API_BASE_URL, getAuthHeaders } from "@/lib/api"
+import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/api"
 
 type NotificationItem = {
   id: number
@@ -13,6 +14,30 @@ type NotificationItem = {
   createdAt?: string
   read: boolean
   href?: string
+  type?: string
+}
+
+type ApiNotificationItem = {
+  id: number
+  title?: string
+  body?: string
+  message?: string
+  createdAt?: string
+  isRead?: boolean
+  read?: boolean
+  type?: string
+  href?: string
+}
+
+type SocketNotificationPayload = {
+  id?: number
+  type?: string
+  title?: string
+  body?: string
+  message?: string
+  href?: string
+  time?: string
+  createdAt?: string
 }
 
 export default function NotificationBell() {
@@ -22,6 +47,7 @@ export default function NotificationBell() {
   const [updating, setUpdating] = useState(false)
 
   const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const socketRef = useRef<Socket | null>(null)
 
   const unreadCount = notifications.filter((item) => !item.read).length
 
@@ -49,6 +75,18 @@ export default function NotificationBell() {
     return created.toLocaleDateString()
   }
 
+  const mapNotification = (item: ApiNotificationItem): NotificationItem => {
+    return {
+      id: item.id,
+      title: item.title || "Notification",
+      message: item.body || item.message || "",
+      createdAt: item.createdAt,
+      read: item.isRead ?? item.read ?? false,
+      href: item.href || "/dashboard/notifications",
+      type: item.type || "GENERAL",
+    }
+  }
+
   const fetchNotifications = async () => {
     try {
       setLoading(true)
@@ -65,7 +103,9 @@ export default function NotificationBell() {
       const data = await res.json()
 
       if (Array.isArray(data)) {
-        setNotifications(data)
+        setNotifications(data.map(mapNotification))
+      } else if (Array.isArray(data?.notifications)) {
+        setNotifications(data.notifications.map(mapNotification))
       } else {
         setNotifications([])
       }
@@ -83,9 +123,7 @@ export default function NotificationBell() {
 
     try {
       setNotifications((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, read: true } : item
-        )
+        prev.map((item) => (item.id === id ? { ...item, read: true } : item))
       )
 
       const res = await fetch(`${API_BASE_URL}/notifications/${id}/read`, {
@@ -100,9 +138,7 @@ export default function NotificationBell() {
       console.error("Error marking notification as read:", error)
 
       setNotifications((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, read: false } : item
-        )
+        prev.map((item) => (item.id === id ? { ...item, read: false } : item))
       )
     }
   }
@@ -137,6 +173,58 @@ export default function NotificationBell() {
 
   useEffect(() => {
     fetchNotifications()
+  }, [])
+
+  useEffect(() => {
+    const currentUser = getUser?.()
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL || ""
+
+    if (!socketUrl || !currentUser?.id) return
+
+    socketRef.current = io(socketUrl, {
+      transports: ["websocket", "polling"],
+      withCredentials: true,
+    })
+
+    socketRef.current.on("connect", () => {
+      const userId = Number(currentUser.id)
+
+      socketRef.current?.emit("join", userId)
+      socketRef.current?.emit("join-user-room", userId)
+
+      if (currentUser.schoolId) {
+        socketRef.current?.emit("join-school-room", Number(currentUser.schoolId))
+      }
+    })
+
+    socketRef.current.on("notification:new", (payload: SocketNotificationPayload) => {
+      const liveNotification: NotificationItem = {
+        id: payload.id || Date.now(),
+        title: payload.title || "New Notification",
+        message: payload.body || payload.message || "You have a new update.",
+        type: payload.type || "GENERAL",
+        time: payload.time || "Just now",
+        read: false,
+        href: payload.href || "/dashboard/notifications",
+        createdAt: payload.createdAt,
+      }
+
+      setNotifications((prev) => [liveNotification, ...prev])
+    })
+
+    socketRef.current.on("notification:unread_count_updated", () => {
+      // keeping local state is enough for now
+      // later you can refetch unread count here if needed
+    })
+
+    socketRef.current.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason)
+    })
+
+    return () => {
+      socketRef.current?.disconnect()
+      socketRef.current = null
+    }
   }, [])
 
   useEffect(() => {
@@ -179,9 +267,7 @@ export default function NotificationBell() {
               <h3 className="text-sm font-semibold text-gray-800">
                 Notifications
               </h3>
-              <p className="text-xs text-gray-500">
-                {unreadCount} unread
-              </p>
+              <p className="text-xs text-gray-500">{unreadCount} unread</p>
             </div>
 
             <button
@@ -230,7 +316,11 @@ export default function NotificationBell() {
 
                 if (item.href) {
                   return (
-                    <Link key={item.id} href={item.href}>
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                    >
                       {content}
                     </Link>
                   )

@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { io, Socket } from "socket.io-client"
+import { Toaster, toast } from "react-hot-toast"
 import ParentSidebar from "../components/ParentSidebar"
 import {
   Bell,
@@ -20,14 +21,16 @@ import {
   UserCircle2,
   Users,
   X,
+  BarChart3,
+  CreditCard,
 } from "lucide-react"
 import {
   API_BASE_URL,
-  getAuthHeaders,
   getToken,
   getUser,
   logout,
-} from "@/lib/auth"
+} from "@/lib/api"
+import { apiFetch, apiFetchJson } from "@/lib/apiClient"
 import {
   clearSelectedChild,
   getSelectedChild,
@@ -42,6 +45,8 @@ type AppUser = {
   name?: string
   email?: string
   role?: UserRole | string
+  schoolId?: number | null
+  token?: string
 }
 
 type NotificationItem = {
@@ -51,6 +56,7 @@ type NotificationItem = {
   time: string
   read: boolean
   href?: string
+  createdAt?: string
 }
 
 type MenuItem = {
@@ -80,34 +86,21 @@ type SocketNotificationPayload = {
   message?: string
   href?: string
   time?: string
+  createdAt?: string
 }
 
-const notificationsSeed: NotificationItem[] = [
-  {
-    id: 1,
-    title: "New student registered",
-    message: "A new student profile was added successfully.",
-    time: "2 mins ago",
-    read: false,
-    href: "/dashboard/students",
-  },
-  {
-    id: 2,
-    title: "Attendance update",
-    message: "Today’s attendance has pending entries for one class.",
-    time: "12 mins ago",
-    read: false,
-    href: "/dashboard/attendance",
-  },
-  {
-    id: 3,
-    title: "Results uploaded",
-    message: "Term results were uploaded for review.",
-    time: "1 hour ago",
-    read: true,
-    href: "/dashboard/results",
-  },
-]
+type NotificationsResponse =
+  | NotificationItem[]
+  | {
+      notifications?: Array<{
+        id: number
+        title?: string
+        message?: string
+        read?: boolean
+        href?: string
+        createdAt?: string
+      }>
+    }
 
 const menuItems: MenuItem[] = [
   {
@@ -117,10 +110,28 @@ const menuItems: MenuItem[] = [
     icon: LayoutDashboard,
   },
   {
+    name: "Analytics",
+    href: "/dashboard/analytics",
+    roles: ["SUPER_ADMIN", "SCHOOL_ADMIN"],
+    icon: BarChart3,
+  },
+  {
     name: "Schools",
     href: "/dashboard/schools",
     roles: ["SUPER_ADMIN"],
     icon: Building2,
+  },
+  {
+    name: "Subscriptions",
+    href: "/dashboard/subscriptions",
+    roles: ["SUPER_ADMIN"],
+    icon: BookOpen,
+  },
+  {
+    name: "Billing",
+    href: "/dashboard/super-admin/billing",
+    roles: ["SUPER_ADMIN"],
+    icon: CreditCard,
   },
   {
     name: "Students",
@@ -191,8 +202,8 @@ export default function DashboardLayout({
   const [checkedAuth, setCheckedAuth] = useState(false)
   const [user, setUser] = useState<AppUser | null>(null)
   const [notificationOpen, setNotificationOpen] = useState(false)
-  const [notifications, setNotifications] =
-    useState<NotificationItem[]>(notificationsSeed)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
 
   const [parentChildren, setParentChildren] = useState<ParentChild[]>([])
   const [selectedChildState, setSelectedChildState] =
@@ -206,7 +217,8 @@ export default function DashboardLayout({
     const token = getToken()
     const currentUser = getUser()
 
-    if (!token) {
+    if (!token || !currentUser) {
+      logout()
       router.replace("/login")
       return
     }
@@ -238,18 +250,9 @@ export default function DashboardLayout({
       try {
         setLoadingChildren(true)
 
-        const res = await fetch(`${API_BASE_URL}/parent-portal/children`, {
-          headers: getAuthHeaders(),
-        })
-
-        if (!res.ok) {
-          setParentChildren([])
-          setSelectedChildState(null)
-          clearSelectedChild()
-          return
-        }
-
-        const data: ParentPortalResponse = await res.json()
+        const data = await apiFetchJson<ParentPortalResponse>(
+          `${API_BASE_URL}/parent-portal/children`
+        )
 
         const childrenList: ParentChild[] = Array.isArray(data?.children)
           ? data.children.map((child) => ({
@@ -280,19 +283,70 @@ export default function DashboardLayout({
         console.error("Failed to load parent children:", error)
         setParentChildren([])
         setSelectedChildState(null)
+        clearSelectedChild()
       } finally {
         setLoadingChildren(false)
       }
     }
 
-    loadParentChildren()
-  }, [user])
+    if (checkedAuth) {
+      loadParentChildren()
+    }
+  }, [user, checkedAuth])
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        setLoadingNotifications(true)
+
+        const data = await apiFetchJson<NotificationsResponse>(
+          `${API_BASE_URL}/notifications`
+        )
+
+        let list: Array<{
+          id: number
+          title?: string
+          message?: string
+          read?: boolean
+          href?: string
+          createdAt?: string
+        }> = []
+
+        if (Array.isArray(data)) {
+          list = data
+        } else if (Array.isArray(data?.notifications)) {
+          list = data.notifications
+        }
+
+        setNotifications(
+          list.map((item) => ({
+            id: item.id,
+            title: item.title || "Notification",
+            message: item.message || "",
+            time: formatNotificationTime(item.createdAt),
+            read: Boolean(item.read),
+            href: item.href || "/dashboard/notifications",
+            createdAt: item.createdAt,
+          }))
+        )
+      } catch (error) {
+        console.error("Error fetching notifications:", error)
+        setNotifications([])
+      } finally {
+        setLoadingNotifications(false)
+      }
+    }
+
+    if (checkedAuth) {
+      fetchNotifications()
+    }
+  }, [checkedAuth])
 
   useEffect(() => {
     if (!checkedAuth || !user?.id) return
 
-    const socketUrl =
-      process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL || ""
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || API_BASE_URL || ""
+    const token = getToken()
 
     if (!socketUrl) {
       console.warn("Socket URL is not set")
@@ -302,10 +356,12 @@ export default function DashboardLayout({
     socketRef.current = io(socketUrl, {
       transports: ["websocket", "polling"],
       withCredentials: true,
+      auth: {
+        token,
+      },
     })
 
     socketRef.current.on("connect", () => {
-      console.log("Socket connected:", socketRef.current?.id)
       socketRef.current?.emit("join", Number(user.id))
     })
 
@@ -313,18 +369,26 @@ export default function DashboardLayout({
       console.log("Socket disconnected:", reason)
     })
 
-    socketRef.current.on("notification", (payload: SocketNotificationPayload) => {
-      const newNotification: NotificationItem = {
-        id: payload.id || Date.now(),
-        title: payload.title || "New Notification",
-        message: payload.message || "You have a new update.",
-        time: payload.time || "Just now",
-        read: false,
-        href: payload.href || "/dashboard/notifications",
-      }
+    socketRef.current.on(
+      "notification",
+      (payload: SocketNotificationPayload) => {
+        const newNotification: NotificationItem = {
+          id: payload.id || Date.now(),
+          title: payload.title || "New Notification",
+          message: payload.message || "You have a new update.",
+          time: payload.time || "Just now",
+          read: false,
+          href: payload.href || "/dashboard/notifications",
+          createdAt: payload.createdAt,
+        }
 
-      setNotifications((prev) => [newNotification, ...prev])
-    })
+        setNotifications((prev) => [newNotification, ...prev])
+
+        toast.success(`${newNotification.title}: ${newNotification.message}`, {
+          duration: 4000,
+        })
+      }
+    )
 
     return () => {
       socketRef.current?.disconnect()
@@ -351,14 +415,40 @@ export default function DashboardLayout({
     router.replace("/login")
   }
 
-  const markAsRead = (id: number) => {
+  const markAsRead = async (id: number) => {
+    const target = notifications.find((item) => item.id === id)
+    if (!target || target.read) return
+
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, read: true } : item))
     )
+
+    try {
+      await apiFetch(`${API_BASE_URL}/notifications/${id}/read`, {
+        method: "PATCH",
+      })
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, read: false } : item))
+      )
+    }
   }
 
-  const markAllAsRead = () => {
+  const markAllAsRead = async () => {
+    const previousNotifications = [...notifications]
+
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
+
+    try {
+      await apiFetch(`${API_BASE_URL}/notifications/read-all`, {
+        method: "PATCH",
+      })
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error)
+      setNotifications(previousNotifications)
+    }
   }
 
   const handleChildChange = (value: string) => {
@@ -430,6 +520,8 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <Toaster position="top-right" />
+
       <div className="border-b border-blue-600 bg-blue-700 px-4 py-3 text-white shadow-sm md:hidden">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -478,7 +570,11 @@ export default function DashboardLayout({
                   </div>
 
                   <div className="max-h-80 overflow-y-auto">
-                    {notifications.length === 0 ? (
+                    {loadingNotifications ? (
+                      <div className="px-4 py-6 text-center text-sm text-slate-500">
+                        Loading notifications...
+                      </div>
+                    ) : notifications.length === 0 ? (
                       <div className="px-4 py-6 text-center text-sm text-slate-500">
                         No notifications available.
                       </div>
@@ -753,7 +849,11 @@ export default function DashboardLayout({
                     </div>
 
                     <div className="max-h-96 overflow-y-auto">
-                      {notifications.length === 0 ? (
+                      {loadingNotifications ? (
+                        <div className="px-4 py-6 text-center text-sm text-slate-500">
+                          Loading notifications...
+                        </div>
+                      ) : notifications.length === 0 ? (
                         <div className="px-4 py-6 text-center text-sm text-slate-500">
                           No notifications available.
                         </div>
@@ -827,4 +927,23 @@ export default function DashboardLayout({
       </div>
     </div>
   )
+}
+
+function formatNotificationTime(createdAt?: string) {
+  if (!createdAt) return "Just now"
+
+  const created = new Date(createdAt)
+  const now = new Date()
+  const diffMs = now.getTime() - created.getTime()
+
+  const minutes = Math.floor(diffMs / (1000 * 60))
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (minutes < 1) return "Just now"
+  if (minutes < 60) return `${minutes} min${minutes > 1 ? "s" : ""} ago`
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`
+  if (days < 7) return `${days} day${days > 1 ? "s" : ""} ago`
+
+  return created.toLocaleDateString()
 }

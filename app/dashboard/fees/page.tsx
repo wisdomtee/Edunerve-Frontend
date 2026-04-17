@@ -1,395 +1,491 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   CheckCircle2,
   Clock3,
   CreditCard,
-  Download,
-  Receipt,
   Search,
+  Trash2,
   Wallet,
   XCircle,
 } from "lucide-react"
-import { getSelectedChild } from "@/lib/parent"
-import { API_BASE_URL, getAuthHeaders } from "@/lib/auth"
+import { getToken, getUser } from "@/lib/api"
 
-type FeeItem = {
-  id: number
-  studentId?: number
-  schoolId?: number
-  term: string
-  session: string
-  totalAmount: number
-  amountPaid: number
-  balance: number
-  status: "PAID" | "PARTIAL" | "UNPAID"
-  dueDate: string
-  createdAt?: string
-  updatedAt?: string
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
+
+type AppUser = {
+  id?: number | string
+  name?: string
+  email?: string
+  role?: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT" | string
+  schoolId?: number | null
+  mustChangePassword?: boolean
 }
 
-export default function ParentFeesPage() {
+type InvoiceItem = {
+  id: number
+  title: string
+  description?: string | null
+  amount: number
+  paidAmount: number
+  balance: number
+  status: "PENDING" | "PAID" | "OVERDUE" | "CANCELLED" | string
+  dueDate?: string | null
+  createdAt?: string
+  updatedAt?: string
+  studentId: number
+  schoolId: number
+  student?: {
+    id: number
+    name: string
+    studentId: string
+    class?: {
+      id: number
+      name: string
+    } | null
+  }
+  payments?: Array<{
+    id: number
+    amount: number
+    method?: string | null
+    reference?: string | null
+    note?: string | null
+    paidAt?: string | null
+    createdAt?: string
+  }>
+}
+
+type InvoiceSummary = {
+  totalInvoices: number
+  totalAmount: number
+  totalPaid: number
+  totalBalance: number
+  paidCount: number
+  pendingCount: number
+  overdueCount: number
+}
+
+export default function FeesPage() {
+  const router = useRouter()
+
+  const [user, setUser] = useState<AppUser | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [error, setError] = useState("")
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("ALL")
-  const [fees, setFees] = useState<FeeItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([])
+  const [summary, setSummary] = useState<InvoiceSummary>({
+    totalInvoices: 0,
+    totalAmount: 0,
+    totalPaid: 0,
+    totalBalance: 0,
+    paidCount: 0,
+    pendingCount: 0,
+    overdueCount: 0,
+  })
 
-  const selectedChild = getSelectedChild()
+  const token = getToken()
 
-  useEffect(() => {
-    const loadFees = async () => {
-      if (!selectedChild?.id) {
-        setFees([])
+  const loadInvoices = async () => {
+    try {
+      setLoading(true)
+      setError("")
+
+      const currentUser = getUser() as AppUser | null
+
+      if (!token || !currentUser) {
+        router.replace("/login")
         return
       }
 
-      try {
-        setLoading(true)
-        setError("")
+      setUser(currentUser)
 
-        const res = await fetch(`${API_BASE_URL}/fees/${selectedChild.id}`, {
-          headers: getAuthHeaders(),
-        })
+      const params = new URLSearchParams()
 
-        const data = await res.json()
-
-        if (!res.ok) {
-          throw new Error(data?.message || "Failed to fetch fees")
-        }
-
-        const normalized: FeeItem[] = Array.isArray(data)
-          ? data.map((item: any) => ({
-              id: item.id,
-              studentId: item.studentId,
-              schoolId: item.schoolId,
-              term: item.term || "",
-              session: item.session || "",
-              totalAmount: Number(item.totalAmount || 0),
-              amountPaid: Number(item.amountPaid || 0),
-              balance: Number(item.balance || 0),
-              status: item.status || "UNPAID",
-              dueDate: item.dueDate,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-            }))
-          : []
-
-        setFees(normalized)
-      } catch (err: any) {
-        console.error("LOAD FEES ERROR:", err)
-        setError(err.message || "Failed to load fees")
-        setFees([])
-      } finally {
-        setLoading(false)
+      if (statusFilter && statusFilter !== "ALL") {
+        params.set("status", statusFilter)
       }
+
+      if (search.trim()) {
+        params.set("search", search.trim())
+      }
+
+      if (currentUser.role === "SUPER_ADMIN" && currentUser.schoolId) {
+        params.set("schoolId", String(currentUser.schoolId))
+      }
+
+      const queryString = params.toString()
+      const url = `${API_BASE_URL}/fee-invoices${queryString ? `?${queryString}` : ""}`
+
+      const res = await fetch(url, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to load invoices")
+      }
+
+      setInvoices(Array.isArray(data?.invoices) ? data.invoices : [])
+      setSummary(
+        data?.summary || {
+          totalInvoices: 0,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalBalance: 0,
+          paidCount: 0,
+          pendingCount: 0,
+          overdueCount: 0,
+        }
+      )
+    } catch (err: any) {
+      console.error("LOAD INVOICES ERROR:", err)
+      setError(err.message || "Failed to load invoices")
+      setInvoices([])
+    } finally {
+      setLoading(false)
     }
+  }
 
-    loadFees()
-  }, [selectedChild?.id])
+  useEffect(() => {
+    loadInvoices()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter])
 
-  const filteredFees = useMemo(() => {
-    return fees.filter((item) => {
-      const matchesSearch =
-        item.term.toLowerCase().includes(search.toLowerCase()) ||
-        item.session.toLowerCase().includes(search.toLowerCase())
+  const filteredInvoices = useMemo(() => {
+    return invoices.filter((invoice) => {
+      const q = search.trim().toLowerCase()
 
-      const matchesStatus =
-        statusFilter === "ALL" ? true : item.status === statusFilter
+      if (!q) return true
 
-      return matchesSearch && matchesStatus
+      return (
+        invoice.title?.toLowerCase().includes(q) ||
+        invoice.description?.toLowerCase().includes(q) ||
+        invoice.student?.name?.toLowerCase().includes(q) ||
+        invoice.student?.studentId?.toLowerCase().includes(q) ||
+        invoice.student?.class?.name?.toLowerCase().includes(q)
+      )
     })
-  }, [fees, search, statusFilter])
-
-  const totals = useMemo(() => {
-    const totalBilled = fees.reduce((sum, item) => sum + item.totalAmount, 0)
-    const totalPaid = fees.reduce((sum, item) => sum + item.amountPaid, 0)
-    const totalBalance = fees.reduce((sum, item) => sum + item.balance, 0)
-    const paidCount = fees.filter((item) => item.status === "PAID").length
-    const partialCount = fees.filter((item) => item.status === "PARTIAL").length
-    const unpaidCount = fees.filter((item) => item.status === "UNPAID").length
-
-    return {
-      totalBilled,
-      totalPaid,
-      totalBalance,
-      paidCount,
-      partialCount,
-      unpaidCount,
-    }
-  }, [fees])
+  }, [invoices, search])
 
   const nearestDueDate = useMemo(() => {
-    if (fees.length === 0) return ""
-    const sorted = [...fees].sort(
-      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+    const valid = filteredInvoices.filter((item) => item.dueDate)
+    if (!valid.length) return ""
+    const sorted = [...valid].sort(
+      (a, b) =>
+        new Date(a.dueDate || "").getTime() - new Date(b.dueDate || "").getTime()
     )
     return sorted[0]?.dueDate || ""
-  }, [fees])
+  }, [filteredInvoices])
+
+  const handleDelete = async (invoiceId: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this invoice?"
+    )
+
+    if (!confirmed) return
+
+    try {
+      setDeletingId(invoiceId)
+
+      const res = await fetch(`${API_BASE_URL}/fee-invoices/${invoiceId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.message || "Failed to delete invoice")
+      }
+
+      await loadInvoices()
+    } catch (err: any) {
+      alert(err.message || "Failed to delete invoice")
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       <section className="rounded-2xl bg-gradient-to-r from-blue-700 to-indigo-600 p-6 text-white shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm text-blue-100">Parent Portal</p>
-            <h1 className="mt-1 text-3xl font-bold">Fees Dashboard</h1>
+            <p className="text-sm text-blue-100">School Admin</p>
+            <h1 className="mt-1 text-3xl font-bold">Fees Management</h1>
             <p className="mt-2 max-w-2xl text-sm text-blue-100">
-              View school fees, balances, payment status, and fee history for your selected child.
+              Create, monitor, and manage student fee invoices for your school.
             </p>
             <p className="mt-3 text-sm font-semibold text-white/90">
-              Selected Child: {selectedChild?.name || "No child selected"}
+              Signed in as: {user?.name || "Admin"}
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50">
+            <button
+              onClick={() => router.push("/dashboard/fees/create")}
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+            >
               <CreditCard className="h-4 w-4" />
-              Pay School Fees
+              Create Invoice
             </button>
 
-            <button className="inline-flex items-center gap-2 rounded-xl border border-white/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10">
-              <Download className="h-4 w-4" />
-              Download Receipt
+            <button
+              onClick={loadInvoices}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/30 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+            >
+              Refresh
             </button>
           </div>
         </div>
       </section>
 
-      {!selectedChild ? (
-        <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500 shadow-sm">
-          Select a child from the top dashboard selector to view fee records.
+      {error ? (
+        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+          {error}
         </div>
-      ) : (
-        <>
-          {error && (
-            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
+      ) : null}
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title="Total Invoices"
+          value={String(summary.totalInvoices)}
+          subtitle="All fee invoices"
+          icon={<Wallet className="h-5 w-5" />}
+        />
+        <StatCard
+          title="Total Billed"
+          value={formatCurrency(summary.totalAmount)}
+          subtitle="Invoice total"
+          icon={<CreditCard className="h-5 w-5" />}
+        />
+        <StatCard
+          title="Total Paid"
+          value={formatCurrency(summary.totalPaid)}
+          subtitle="Successful payments"
+          icon={<CheckCircle2 className="h-5 w-5" />}
+        />
+        <StatCard
+          title="Outstanding Balance"
+          value={formatCurrency(summary.totalBalance)}
+          subtitle="Pending amount"
+          icon={<Clock3 className="h-5 w-5" />}
+        />
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="rounded-2xl border bg-white p-6 shadow-sm xl:col-span-2">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Invoice List</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Search and manage school fee invoices in real time.
+              </p>
             </div>
-          )}
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              title="Total Billed"
-              value={formatCurrency(totals.totalBilled)}
-              subtitle="Selected child"
-              icon={<Wallet className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Total Paid"
-              value={formatCurrency(totals.totalPaid)}
-              subtitle="Payments completed"
-              icon={<CheckCircle2 className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Outstanding Balance"
-              value={formatCurrency(totals.totalBalance)}
-              subtitle="Amount remaining"
-              icon={<Clock3 className="h-5 w-5" />}
-            />
-            <StatCard
-              title="Receipts"
-              value={String(fees.length)}
-              subtitle="Available fee entries"
-              icon={<Receipt className="h-5 w-5" />}
-            />
-          </section>
-
-          <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-            <div className="rounded-2xl border bg-white p-6 shadow-sm xl:col-span-2">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Fee Records</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Review term fees and payment progress for {selectedChild.name}.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search term, session..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 sm:w-72"
-                    />
-                  </div>
-
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="ALL">All Status</option>
-                    <option value="PAID">Paid</option>
-                    <option value="PARTIAL">Partial</option>
-                    <option value="UNPAID">Unpaid</option>
-                  </select>
-                </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search title, student, class..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 py-3 pl-10 pr-4 text-sm outline-none focus:border-blue-500 sm:w-72"
+                />
               </div>
 
-              <div className="mt-6 overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-y-2">
-                  <thead>
-                    <tr className="text-left text-sm text-gray-500">
-                      <th className="pb-2">Child</th>
-                      <th className="pb-2">Term</th>
-                      <th className="pb-2">Session</th>
-                      <th className="pb-2">Total</th>
-                      <th className="pb-2">Paid</th>
-                      <th className="pb-2">Balance</th>
-                      <th className="pb-2">Status</th>
-                      <th className="pb-2">Action</th>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-xl border border-gray-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+              >
+                <option value="ALL">All Status</option>
+                <option value="PENDING">Pending</option>
+                <option value="PAID">Paid</option>
+                <option value="OVERDUE">Overdue</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-6 overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-left text-sm text-gray-500">
+                  <th className="pb-2">Student</th>
+                  <th className="pb-2">Invoice</th>
+                  <th className="pb-2">Amount</th>
+                  <th className="pb-2">Paid</th>
+                  <th className="pb-2">Balance</th>
+                  <th className="pb-2">Status</th>
+                  <th className="pb-2">Due Date</th>
+                  <th className="pb-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-gray-500"
+                    >
+                      Loading invoices...
+                    </td>
+                  </tr>
+                ) : filteredInvoices.length > 0 ? (
+                  filteredInvoices.map((item) => (
+                    <tr key={item.id} className="bg-slate-50">
+                      <td className="rounded-l-xl px-4 py-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            {item.student?.name || "Unknown student"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            ID: {item.student?.studentId || "—"}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Class: {item.student?.class?.name || "—"}
+                          </p>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-medium text-gray-900">
+                          {item.title}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {item.description || "No description"}
+                        </p>
+                      </td>
+
+                      <td className="px-4 py-4 text-sm font-medium text-gray-900">
+                        {formatCurrency(Number(item.amount || 0))}
+                      </td>
+
+                      <td className="px-4 py-4 text-sm text-green-700">
+                        {formatCurrency(Number(item.paidAmount || 0))}
+                      </td>
+
+                      <td className="px-4 py-4 text-sm text-red-600">
+                        {formatCurrency(Number(item.balance || 0))}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        <StatusBadge status={item.status} />
+                      </td>
+
+                      <td className="px-4 py-4 text-sm text-gray-700">
+                        {item.dueDate ? formatLongDate(item.dueDate) : "—"}
+                      </td>
+
+                      <td className="rounded-r-xl px-4 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() =>
+                              router.push(`/dashboard/fees/create?copy=${item.id}`)
+                            }
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
+                          >
+                            Duplicate
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            {deletingId === item.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-gray-500"
-                        >
-                          Loading fee records...
-                        </td>
-                      </tr>
-                    ) : filteredFees.length > 0 ? (
-                      filteredFees.map((item) => (
-                        <tr key={item.id} className="bg-slate-50">
-                          <td className="rounded-l-xl px-4 py-4">
-                            <div>
-                              <p className="font-semibold text-gray-900">
-                                {selectedChild.name}
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Due: {item.dueDate ? formatLongDate(item.dueDate) : "—"}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-gray-700">{item.term}</td>
-                          <td className="px-4 py-4 text-sm text-gray-700">{item.session}</td>
-                          <td className="px-4 py-4 text-sm font-medium text-gray-900">
-                            {formatCurrency(item.totalAmount)}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-green-700">
-                            {formatCurrency(item.amountPaid)}
-                          </td>
-                          <td className="px-4 py-4 text-sm text-red-600">
-                            {formatCurrency(item.balance)}
-                          </td>
-                          <td className="px-4 py-4">
-                            <StatusBadge status={item.status} />
-                          </td>
-                          <td className="rounded-r-xl px-4 py-4">
-                            <button className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700">
-                              View Receipt
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-gray-500"
-                        >
-                          No fee records found for the selected child.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-gray-500"
+                    >
+                      No invoices found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900">Invoice Summary</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Overview of current fee invoice performance.
+            </p>
+
+            <div className="mt-5 space-y-4">
+              <SummaryItem
+                label="Paid Invoices"
+                value={String(summary.paidCount)}
+                color="text-green-600"
+              />
+              <SummaryItem
+                label="Pending Invoices"
+                value={String(summary.pendingCount)}
+                color="text-amber-600"
+              />
+              <SummaryItem
+                label="Overdue Invoices"
+                value={String(summary.overdueCount)}
+                color="text-red-600"
+              />
+              <SummaryItem
+                label="Outstanding"
+                value={formatCurrency(summary.totalBalance)}
+                color="text-blue-700"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-900">Nearest Due Date</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Closest invoice deadline across visible records.
+            </p>
+
+            <div className="mt-5 rounded-2xl bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-800">
+                Upcoming deadline
+              </p>
+              <p className="mt-2 text-xl font-bold text-amber-900">
+                {nearestDueDate ? formatLongDate(nearestDueDate) : "No due date"}
+              </p>
+              <p className="mt-1 text-sm text-amber-700">
+                Review pending invoices before deadline.
+              </p>
             </div>
 
-            <div className="space-y-6">
-              <div className="rounded-2xl border bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900">Payment Summary</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Quick overview of current payment status.
-                </p>
-
-                <div className="mt-5 space-y-4">
-                  <SummaryItem
-                    label="Paid Terms"
-                    value={String(totals.paidCount)}
-                    color="text-green-600"
-                  />
-                  <SummaryItem
-                    label="Partial Terms"
-                    value={String(totals.partialCount)}
-                    color="text-amber-600"
-                  />
-                  <SummaryItem
-                    label="Unpaid Terms"
-                    value={String(totals.unpaidCount)}
-                    color="text-red-600"
-                  />
-                  <SummaryItem
-                    label="Outstanding"
-                    value={formatCurrency(totals.totalBalance)}
-                    color="text-blue-700"
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900">Next Due Date</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Nearest fee deadline to watch.
-                </p>
-
-                <div className="mt-5 rounded-2xl bg-amber-50 p-4">
-                  <p className="text-sm font-medium text-amber-800">Upcoming payment deadline</p>
-                  <p className="mt-2 text-xl font-bold text-amber-900">
-                    {nearestDueDate ? formatLongDate(nearestDueDate) : "No due date"}
-                  </p>
-                  <p className="mt-1 text-sm text-amber-700">
-                    Complete pending payment to avoid late reminders.
-                  </p>
-                </div>
-
-                <button className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
-                  Make Payment
-                </button>
-              </div>
-
-              <div className="rounded-2xl border bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900">Quick Links</h3>
-                <div className="mt-4 grid gap-3">
-                  <Link
-                    href="/dashboard/parents"
-                    className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-slate-50"
-                  >
-                    Back to Parent Portal
-                  </Link>
-                  <Link
-                    href="/dashboard/results"
-                    className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-slate-50"
-                  >
-                    View Results
-                  </Link>
-                  <Link
-                    href="/dashboard/attendance"
-                    className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-slate-50"
-                  >
-                    View Attendance
-                  </Link>
-                  <Link
-                    href="/dashboard/messages"
-                    className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-slate-50"
-                  >
-                    Contact School
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
-        </>
-      )}
+            <button
+              onClick={() => router.push("/dashboard/fees/create")}
+              className="mt-4 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              Create New Invoice
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
@@ -436,7 +532,11 @@ function SummaryItem({
   )
 }
 
-function StatusBadge({ status }: { status: "PAID" | "PARTIAL" | "UNPAID" }) {
+function StatusBadge({
+  status,
+}: {
+  status: "PENDING" | "PAID" | "OVERDUE" | "CANCELLED" | string
+}) {
   if (status === "PAID") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
@@ -446,19 +546,27 @@ function StatusBadge({ status }: { status: "PAID" | "PARTIAL" | "UNPAID" }) {
     )
   }
 
-  if (status === "PARTIAL") {
+  if (status === "OVERDUE") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-        <Clock3 className="h-3.5 w-3.5" />
-        Partial
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+        <XCircle className="h-3.5 w-3.5" />
+        Overdue
+      </span>
+    )
+  }
+
+  if (status === "CANCELLED") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-3 py-1 text-xs font-semibold text-gray-700">
+        Cancelled
       </span>
     )
   }
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-      <XCircle className="h-3.5 w-3.5" />
-      Unpaid
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+      <Clock3 className="h-3.5 w-3.5" />
+      Pending
     </span>
   )
 }
