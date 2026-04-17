@@ -19,17 +19,12 @@ import {
   Tooltip,
   Legend,
 } from "recharts"
-import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/auth"
-
-type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT"
-
-type AuthUser = {
-  id: number
-  name?: string
-  email: string
-  role: UserRole
-  schoolId?: number | null
-}
+import {
+  API_BASE_URL,
+  getAuthHeaders,
+  getUser,
+  type AuthUser,
+} from "@/lib/api"
 
 type DashboardStats = {
   schools: number
@@ -209,7 +204,8 @@ export default function DashboardHomePage() {
 
   useEffect(() => {
     if (!user) return
-    loadDashboard(user)
+    void loadDashboard(user)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, selectedClass, selectedTerm, startDate, endDate])
 
   const fetchTeacherDashboardCharts = async () => {
@@ -222,6 +218,7 @@ export default function DashboardHomePage() {
       try {
         const res = await fetch(url, {
           headers: getAuthHeaders(),
+          credentials: "include",
         })
 
         if (!res.ok) continue
@@ -252,6 +249,7 @@ export default function DashboardHomePage() {
         `${API_BASE_URL}/analytics/dashboard?${params.toString()}`,
         {
           headers: getAuthHeaders(),
+          credentials: "include",
         }
       )
 
@@ -285,6 +283,7 @@ export default function DashboardHomePage() {
             `${API_BASE_URL}/teachers/me/summary`,
             {
               headers: getAuthHeaders(),
+              credentials: "include",
             }
           )
 
@@ -333,6 +332,7 @@ export default function DashboardHomePage() {
         try {
           const res = await fetch(`${API_BASE_URL}/parent-portal/children`, {
             headers: getAuthHeaders(),
+            credentials: "include",
           })
 
           const data: ParentPortalResponse = res.ok ? await res.json() : {}

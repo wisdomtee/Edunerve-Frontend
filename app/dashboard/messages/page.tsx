@@ -78,6 +78,7 @@ export default function MessagesPage() {
         headers: {
           Authorization: `Bearer ${token || ""}`,
         },
+        credentials: "include",
       })
 
       const data = await res.json().catch(() => [])
@@ -101,6 +102,7 @@ export default function MessagesPage() {
 
       const res = await fetch(`${API_BASE_URL}/users`, {
         headers: getAuthHeaders(),
+        credentials: "include",
       })
 
       const data = await res.json().catch(() => [])
@@ -131,6 +133,7 @@ export default function MessagesPage() {
           headers: {
             Authorization: `Bearer ${token || ""}`,
           },
+          credentials: "include",
         }
       )
 
@@ -168,20 +171,22 @@ export default function MessagesPage() {
   }
 
   useEffect(() => {
+    if (!token || !currentUser) return
     fetchMessages(activeTab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab])
+  }, [activeTab, token, currentUser])
 
   useEffect(() => {
+    if (!token || !currentUser) return
     fetchUsers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [token, currentUser])
 
   useEffect(() => {
-    if (!selectedUserId) return
+    if (!selectedUserId || !token || !currentUser) return
     fetchConversation(selectedUserId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUserId])
+  }, [selectedUserId, token, currentUser])
 
   useEffect(() => {
     if (!currentUser || !token) return
@@ -290,6 +295,7 @@ export default function MessagesPage() {
               headers: {
                 Authorization: `Bearer ${token}`,
               },
+              credentials: "include",
             })
           )
         )
@@ -323,6 +329,7 @@ export default function MessagesPage() {
       const res = await fetch(`${API_BASE_URL}/messages/send`, {
         method: "POST",
         headers: getAuthHeaders(),
+        credentials: "include",
         body: JSON.stringify({
           receiverId: selectedUserId,
           subject: subject.trim() || null,
@@ -360,6 +367,7 @@ export default function MessagesPage() {
         headers: {
           Authorization: `Bearer ${token || ""}`,
         },
+        credentials: "include",
       })
 
       const data = await res.json().catch(() => null)
@@ -386,6 +394,16 @@ export default function MessagesPage() {
   const handleSelectUser = async (userId: number) => {
     setSelectedUserId(userId)
     setError("")
+  }
+
+  if (!token || !currentUser) {
+    return (
+      <div className="p-6">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          Invalid login session. Please log in again.
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -457,7 +475,7 @@ export default function MessagesPage() {
                 const unreadCount = messages.filter(
                   (m) =>
                     m.senderId === user.id &&
-                    m.receiverId === currentUser?.id &&
+                    m.receiverId === currentUser.id &&
                     !m.isRead
                 ).length
 
@@ -465,8 +483,8 @@ export default function MessagesPage() {
                   .filter(
                     (m) =>
                       (m.senderId === user.id &&
-                        m.receiverId === currentUser?.id) ||
-                      (m.senderId === currentUser?.id &&
+                        m.receiverId === currentUser.id) ||
+                      (m.senderId === currentUser.id &&
                         m.receiverId === user.id)
                   )
                   .sort(
@@ -554,7 +572,7 @@ export default function MessagesPage() {
             ) : (
               <>
                 {conversationMessages.map((message) => {
-                  const isMine = message.senderId === currentUser?.id
+                  const isMine = message.senderId === currentUser.id
 
                   return (
                     <div

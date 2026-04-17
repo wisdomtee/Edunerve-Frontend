@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { API_BASE_URL } from "@/lib/api"
 import { apiFetchJson } from "@/lib/apiClient"
 import { downloadInvoicePDF, downloadReceiptPDF } from "@/app/lib/billingPdf"
+
 type School = {
   id: number
   name: string
@@ -16,11 +17,91 @@ type Invoice = {
   schoolId: number
   plan: string
   total: number
-  status: "UNPAID" | "PAID" | "OVERDUE"
+  status: "UNPAID" | "PAID" | "OVERDUE" | "PENDING" | string
   createdAt: string
   dueDate: string
   school?: School
-  receipt?: any
+  receipt?: {
+    receiptNumber?: string
+    amount?: number
+    paymentMethod?: string
+    paymentDate?: string
+    notes?: string
+  } | null
+}
+
+type InvoicePdfData = {
+  id?: number
+  invoiceNumber: string
+  amount: number
+  total: number
+  tax: number
+  discount: number
+  status: string
+  planType: string
+  issueDate: string
+  dueDate: string
+  paymentReference?: string
+  description?: string
+  school: {
+    id?: number
+    name: string
+    email?: string
+  }
+}
+
+type ReceiptPdfData = {
+  receiptNumber: string
+  invoiceNumber: string
+  amount: number
+  paymentMethod: string
+  paymentDate: string
+  paymentReference?: string
+  school: {
+    name: string
+    email?: string
+  }
+  notes?: string
+}
+
+function toBillingPdfInvoice(inv: Invoice): InvoicePdfData {
+  return {
+    id: inv.id,
+    invoiceNumber: inv.invoiceNumber || `INV-${inv.id || "N/A"}`,
+    amount: Number(inv.total || 0),
+    total: Number(inv.total || 0),
+    tax: 0,
+    discount: 0,
+    status: String(inv.status || "PENDING"),
+    planType: String(inv.plan || "NORMAL"),
+    issueDate: String(inv.createdAt || new Date().toISOString()),
+    dueDate: String(inv.dueDate || new Date().toISOString()),
+    paymentReference: undefined,
+    description: undefined,
+    school: {
+      id: inv.school?.id,
+      name: inv.school?.name || "School",
+      email: inv.school?.email || undefined,
+    },
+  }
+}
+
+function toReceiptPdfData(inv: Invoice): ReceiptPdfData {
+  return {
+    receiptNumber: inv.receipt?.receiptNumber || `RCPT-${inv.id || "N/A"}`,
+    invoiceNumber: inv.invoiceNumber || `INV-${inv.id || "N/A"}`,
+    amount: Number(inv.receipt?.amount || inv.total || 0),
+    paymentMethod: String(inv.receipt?.paymentMethod || "TRANSFER"),
+    paymentDate: String(
+      inv.receipt?.paymentDate || inv.createdAt || new Date().toISOString()
+    ),
+    paymentReference: undefined,
+    school: {
+      name: inv.school?.name || "School",
+      email: inv.school?.email || undefined,
+    },
+    notes: inv.receipt?.notes || undefined,
+  }
 }
 
 export default function BillingPage() {
@@ -30,12 +111,13 @@ export default function BillingPage() {
   const [filterStatus, setFilterStatus] = useState("ALL")
   const [error, setError] = useState("")
 
-  // ================= FETCH =================
   const fetchInvoices = async () => {
     try {
-      const data = await apiFetchJson(`${API_BASE_URL}/billing/invoices`)
-      setInvoices(data.invoices || [])
-    } catch (err: any) {
+      const data = await apiFetchJson<{ invoices?: Invoice[] }>(
+        `${API_BASE_URL}/billing/invoices`
+      )
+      setInvoices(Array.isArray(data?.invoices) ? data.invoices : [])
+    } catch (err) {
       console.error(err)
       setError("Failed to load invoices")
     }
@@ -55,12 +137,12 @@ export default function BillingPage() {
     load()
   }, [])
 
-  // ================= PAY =================
   const handlePayInvoice = async (invoiceId: number) => {
     try {
       setPayingId(invoiceId)
+      setError("")
 
-      const data = await apiFetchJson(
+      const data = await apiFetchJson<any>(
         `${API_BASE_URL}/billing/invoices/${invoiceId}/mark-paid`,
         {
           method: "PATCH",
@@ -71,8 +153,7 @@ export default function BillingPage() {
         }
       )
 
-      // 🔥 AUTO DOWNLOAD RECEIPT
-      if (data.receipt?.base64) {
+      if (data?.receipt?.base64) {
         const byteCharacters = atob(data.receipt.base64)
         const byteNumbers = new Array(byteCharacters.length)
 
@@ -87,9 +168,8 @@ export default function BillingPage() {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = data.receipt.fileName
+        link.download = data.receipt.fileName || "receipt.pdf"
         link.click()
-
         window.URL.revokeObjectURL(url)
       }
 
@@ -102,11 +182,10 @@ export default function BillingPage() {
     }
   }
 
-  // ================= FILTER =================
   const filtered =
     filterStatus === "ALL"
       ? invoices
-      : invoices.filter((i) => i.status === filterStatus)
+      : invoices.filter((i) => String(i.status).toUpperCase() === filterStatus)
 
   const money = (v: number) =>
     new Intl.NumberFormat("en-NG", {
@@ -114,28 +193,26 @@ export default function BillingPage() {
       currency: "NGN",
     }).format(v)
 
-  // ================= UI =================
   if (loading) {
     return <div className="p-6">Loading billing data...</div>
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 p-6">
       <h1 className="text-2xl font-bold">Billing Dashboard</h1>
 
       {error && (
-        <div className="bg-red-100 text-red-700 px-4 py-2 rounded">
+        <div className="rounded bg-red-100 px-4 py-2 text-red-700">
           {error}
         </div>
       )}
 
-      {/* FILTER */}
       <div className="flex gap-2">
-        {["ALL", "PAID", "UNPAID", "OVERDUE"].map((f) => (
+        {["ALL", "PAID", "UNPAID", "OVERDUE", "PENDING"].map((f) => (
           <button
             key={f}
             onClick={() => setFilterStatus(f)}
-            className={`px-4 py-2 rounded-lg border ${
+            className={`rounded-lg border px-4 py-2 ${
               filterStatus === f
                 ? "bg-blue-600 text-white"
                 : "bg-white hover:bg-gray-50"
@@ -146,8 +223,7 @@ export default function BillingPage() {
         ))}
       </div>
 
-      {/* TABLE */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
+      <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -174,33 +250,31 @@ export default function BillingPage() {
                 </td>
 
                 <td className="p-3">
-                  {new Date(inv.dueDate).toLocaleDateString()}
+                  {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : "-"}
                 </td>
 
-                <td className="p-3 flex gap-2 flex-wrap">
+                <td className="flex flex-wrap gap-2 p-3">
                   <button
-                    onClick={() => downloadInvoicePDF(inv)}
-                    className="bg-gray-900 text-white px-3 py-1 rounded hover:bg-black"
+                    onClick={() => downloadInvoicePDF(toBillingPdfInvoice(inv))}
+                    className="rounded bg-gray-900 px-3 py-1 text-white hover:bg-black"
                   >
                     Invoice
                   </button>
 
-                  {inv.status !== "PAID" && (
+                  {String(inv.status).toUpperCase() !== "PAID" && (
                     <button
                       onClick={() => handlePayInvoice(inv.id)}
                       disabled={payingId === inv.id}
-                      className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 disabled:opacity-60"
+                      className="rounded bg-green-600 px-3 py-1 text-white hover:bg-green-700 disabled:opacity-60"
                     >
-                      {payingId === inv.id
-                        ? "Processing..."
-                        : "Mark Paid"}
+                      {payingId === inv.id ? "Processing..." : "Mark Paid"}
                     </button>
                   )}
 
                   {inv.receipt && (
                     <button
-                      onClick={() => downloadReceiptPDF(inv.receipt)}
-                      className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                      onClick={() => downloadReceiptPDF(toReceiptPdfData(inv))}
+                      className="rounded bg-blue-600 px-3 py-1 text-white hover:bg-blue-700"
                     >
                       Receipt
                     </button>
@@ -212,9 +286,7 @@ export default function BillingPage() {
         </table>
 
         {filtered.length === 0 && (
-          <div className="p-6 text-center text-gray-500">
-            No invoices found
-          </div>
+          <div className="p-6 text-center text-gray-500">No invoices found</div>
         )}
       </div>
     </div>
@@ -222,15 +294,22 @@ export default function BillingPage() {
 }
 
 function Status({ status }: { status: string }) {
-  const map: any = {
+  const normalized = String(status || "").toUpperCase()
+
+  const map: Record<string, string> = {
     PAID: "bg-green-100 text-green-700",
     UNPAID: "bg-yellow-100 text-yellow-700",
+    PENDING: "bg-yellow-100 text-yellow-700",
     OVERDUE: "bg-red-100 text-red-700",
   }
 
   return (
-    <span className={`px-2 py-1 text-xs rounded ${map[status]}`}>
-      {status}
+    <span
+      className={`rounded px-2 py-1 text-xs ${
+        map[normalized] || "bg-gray-100 text-gray-700"
+      }`}
+    >
+      {normalized}
     </span>
   )
 }

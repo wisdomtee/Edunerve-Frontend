@@ -21,11 +21,11 @@ import RoleGuard from "@/app/components/RoleGuard"
 type UserRole = "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT"
 
 type AuthUser = {
-  id: number
+  id?: number | string
   name?: string
-  email: string
-  role: UserRole
-  schoolId?: number | null
+  email?: string
+  role?: UserRole | string
+  schoolId?: number | string | null
 }
 
 type ChildSummary = {
@@ -97,6 +97,22 @@ type ParentChildResponse = {
   attendance?: AttendanceItem[]
 }
 
+function normalizeUser(rawUser: any): AuthUser {
+  return {
+    ...rawUser,
+    id:
+      rawUser?.id !== undefined && rawUser?.id !== null && rawUser?.id !== ""
+        ? Number(rawUser.id)
+        : undefined,
+    schoolId:
+      rawUser?.schoolId !== undefined &&
+      rawUser?.schoolId !== null &&
+      rawUser?.schoolId !== ""
+        ? Number(rawUser.schoolId)
+        : null,
+  }
+}
+
 export default function ParentChildPage() {
   const router = useRouter()
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -126,7 +142,8 @@ export default function ParentChildPage() {
       return
     }
 
-    setUser(storedUser)
+    const normalizedUser = normalizeUser(storedUser)
+    setUser(normalizedUser)
     loadChildData()
   }, [router])
 

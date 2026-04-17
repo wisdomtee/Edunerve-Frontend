@@ -9,23 +9,75 @@ export type StoredUser = {
   name?: string
   email?: string
   role?: string
+  schoolId?: number | string | null
+  mustChangePassword?: boolean
+  token?: string
+  [key: string]: any
+}
+
+export type AuthUser = {
+  id: number
+  name: string
+  email: string
+  role: string
   schoolId?: number | null
   mustChangePassword?: boolean
   token?: string
   [key: string]: any
 }
 
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+export const normalizeStoredUser = (
+  user: StoredUser | null
+): AuthUser | null => {
+  if (!user) return null
+
+  const id = toNumber(user.id)
+  if (id === null) return null
+
+  const schoolId = toNumber(user.schoolId)
+
+  return {
+    ...user,
+    id,
+    name: user.name ?? "",
+    email: user.email ?? "",
+    role: user.role ?? "",
+    schoolId,
+    mustChangePassword: Boolean(user.mustChangePassword),
+    token: user.token,
+  }
+}
+
 export const saveAuth = (token: string, user: StoredUser) => {
   if (typeof window === "undefined") return
 
-  const userWithToken: StoredUser = {
+  const normalized = normalizeStoredUser({
+    ...user,
+    token,
+    mustChangePassword: Boolean(user.mustChangePassword),
+  })
+
+  const userToStore: StoredUser = normalized ?? {
     ...user,
     token,
     mustChangePassword: Boolean(user.mustChangePassword),
   }
 
   localStorage.setItem(TOKEN_KEY, token)
-  localStorage.setItem(USER_KEY, JSON.stringify(userWithToken))
+  localStorage.setItem(USER_KEY, JSON.stringify(userToStore))
 }
 
 export const getToken = (): string | null => {
@@ -45,7 +97,7 @@ export const getToken = (): string | null => {
   }
 }
 
-export const getUser = (): StoredUser | null => {
+export const getStoredUser = (): StoredUser | null => {
   if (typeof window === "undefined") return null
 
   const raw = localStorage.getItem(USER_KEY)
@@ -61,6 +113,10 @@ export const getUser = (): StoredUser | null => {
   } catch {
     return null
   }
+}
+
+export const getUser = (): AuthUser | null => {
+  return normalizeStoredUser(getStoredUser())
 }
 
 export const isAuthenticated = (): boolean => {
@@ -118,3 +174,5 @@ export const authFetch = async (
 
   return response
 }
+
+export const apiFetch = authFetch
