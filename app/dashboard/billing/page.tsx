@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react"
 import { API_BASE_URL } from "@/lib/api"
 import { apiFetchJson } from "@/lib/apiClient"
-import { downloadInvoicePDF, downloadReceiptPDF } from "@/lib/billingPdf"
-
+import { downloadInvoicePDF, downloadReceiptPDF } from "@/app/lib/billingPdf"
 type School = {
   id: number
   name: string

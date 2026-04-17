@@ -16,11 +16,11 @@ import { getSelectedChild } from "@/lib/parent"
 type AttendanceStatus = "PRESENT" | "ABSENT" | "LATE"
 
 type AppUser = {
-  id?: number
+  id?: number | string
   name?: string
   email?: string
   role?: "SUPER_ADMIN" | "SCHOOL_ADMIN" | "TEACHER" | "PARENT" | string
-  schoolId?: number | null
+  schoolId?: number | string | null
 }
 
 type ClassItem = {
@@ -92,6 +92,22 @@ function formatDate(date: string) {
   }).format(new Date(date))
 }
 
+function normalizeUser(rawUser: any): AppUser {
+  return {
+    ...rawUser,
+    id:
+      rawUser?.id !== undefined && rawUser?.id !== null
+        ? Number(rawUser.id)
+        : undefined,
+    schoolId:
+      rawUser?.schoolId !== undefined &&
+      rawUser?.schoolId !== null &&
+      rawUser?.schoolId !== ""
+        ? Number(rawUser.schoolId)
+        : null,
+  }
+}
+
 export default function AttendancePage() {
   const router = useRouter()
 
@@ -111,13 +127,14 @@ export default function AttendancePage() {
   const [parentChildren, setParentChildren] = useState<ParentPortalChild[]>([])
 
   useEffect(() => {
-    const currentUser = getUser()
+    const rawUser = getUser()
 
-    if (!currentUser) {
+    if (!rawUser) {
       router.push("/login")
       return
     }
 
+    const currentUser = normalizeUser(rawUser)
     setUser(currentUser)
 
     if (currentUser.role === "PARENT") {
@@ -134,7 +151,7 @@ export default function AttendancePage() {
       const selectedChild = getSelectedChild()
 
       if (selectedChild?.id) {
-        loadParentAttendance(selectedChild.id)
+        loadParentAttendance(Number(selectedChild.id))
       } else {
         setStudents([])
         setAttendance({})
@@ -146,6 +163,7 @@ export default function AttendancePage() {
       } else {
         setStudents([])
         setAttendance({})
+        setLoading(false)
       }
     }
   }, [user, selectedClassId, selectedDate])
@@ -174,7 +192,7 @@ export default function AttendancePage() {
       const data: ParentPortalResponse = await res.json()
 
       if (!res.ok) {
-        throw new Error("Failed to load parent children")
+        throw new Error(data && "message" in data ? (data as any).message : "Failed to load parent children")
       }
 
       const children = Array.isArray(data?.children) ? data.children : []
@@ -193,7 +211,7 @@ export default function AttendancePage() {
       setError("")
       setSuccess("")
 
-      const activeUser = currentUser || getUser()
+      const activeUser = currentUser || normalizeUser(getUser())
 
       const res = await fetch(`${API_BASE_URL}/classes`, {
         headers: getAuthHeaders(),
@@ -469,7 +487,8 @@ export default function AttendancePage() {
   const selectedChild = isParent ? getSelectedChild() : null
   const selectedChildName =
     selectedChild?.name ||
-    parentChildren.find((item) => item.id === selectedChild?.id)?.name ||
+    parentChildren.find((item) => String(item.id) === String(selectedChild?.id))
+      ?.name ||
     ""
 
   const presentCount = useMemo(

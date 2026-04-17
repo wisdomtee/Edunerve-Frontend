@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { API_BASE_URL, apiFetch, getAuthHeaders, getUser } from "@/lib/api"
+import { API_BASE_URL, getAuthHeaders, getUser } from "@/lib/api"
+import { apiFetch } from "@/lib/apiClient"
 
 type School = {
   id: number
