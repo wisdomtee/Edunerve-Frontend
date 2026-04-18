@@ -15,14 +15,45 @@ type FormData = {
   principalEmail: string
   adminName: string
   adminEmail: string
-  adminPassword: string
   subscriptionPlan: "NORMAL" | "PRO"
-  studentLimit: string
+  billingCycle: "monthly" | "yearly"
 }
 
 type ApiError = {
   message?: string
   error?: string
+}
+
+type CreateSchoolResponse = {
+  message?: string
+  school?: {
+    id: number
+    name: string
+    address?: string | null
+    phone?: string | null
+    email?: string | null
+    schoolCode: string
+    plan?: string | null
+    billingCycle?: string | null
+    subscriptionStatus?: string | null
+    billingState?: any
+  }
+  admin?: {
+    id: number
+    name: string
+    email: string
+    role: string
+    mustChangePassword?: boolean
+  }
+  credentials?: {
+    schoolCode: string
+    email: string
+    temporaryPassword: string
+  }
+  emailStatus?: {
+    sent: boolean
+    error?: string
+  }
 }
 
 export default function CreateSchoolPage() {
@@ -38,14 +69,20 @@ export default function CreateSchoolPage() {
     principalEmail: "",
     adminName: "",
     adminEmail: "",
-    adminPassword: "",
     subscriptionPlan: "NORMAL",
-    studentLimit: "",
+    billingCycle: "monthly",
   })
 
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState("")
   const [error, setError] = useState("")
+
+  const [createdSchoolCode, setCreatedSchoolCode] = useState("")
+  const [createdAdminEmail, setCreatedAdminEmail] = useState("")
+  const [temporaryPassword, setTemporaryPassword] = useState("")
+  const [emailSent, setEmailSent] = useState<boolean | null>(null)
+  const [emailError, setEmailError] = useState("")
+  const [showCredentials, setShowCredentials] = useState(false)
 
   const selectedPlanNote = useMemo(() => {
     if (form.subscriptionPlan === "PRO") {
@@ -53,6 +90,12 @@ export default function CreateSchoolPage() {
     }
     return "Normal plan is suitable for smaller schools starting with the platform."
   }, [form.subscriptionPlan])
+
+  const billingCycleNote = useMemo(() => {
+    return form.billingCycle === "yearly"
+      ? "Yearly billing is better for schools that want fewer payment cycles."
+      : "Monthly billing is flexible and easier for schools starting out."
+  }, [form.billingCycle])
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -64,6 +107,15 @@ export default function CreateSchoolPage() {
     }))
   }
 
+  const resetCreatedDetails = () => {
+    setCreatedSchoolCode("")
+    setCreatedAdminEmail("")
+    setTemporaryPassword("")
+    setEmailSent(null)
+    setEmailError("")
+    setShowCredentials(false)
+  }
+
   const validateForm = () => {
     if (!form.name.trim()) return "School name is required"
     if (!form.address.trim()) return "School address is required"
@@ -71,8 +123,6 @@ export default function CreateSchoolPage() {
     if (!form.email.trim()) return "School email is required"
     if (!form.adminName.trim()) return "Admin name is required"
     if (!form.adminEmail.trim()) return "Admin email is required"
-    if (!form.adminPassword.trim()) return "Admin password is required"
-    if (form.adminPassword.length < 6) return "Admin password must be at least 6 characters"
     return ""
   }
 
@@ -80,6 +130,7 @@ export default function CreateSchoolPage() {
     e.preventDefault()
     setError("")
     setSuccess("")
+    resetCreatedDetails()
 
     const validationError = validateForm()
     if (validationError) {
@@ -93,24 +144,21 @@ export default function CreateSchoolPage() {
       const token = getToken()
 
       const payload = {
-        name: form.name,
+        schoolName: form.name,
         address: form.address,
         phone: form.phone,
-        email: form.email,
+        schoolEmail: form.email,
         website: form.website || null,
         principalName: form.principalName || null,
         principalEmail: form.principalEmail || null,
-        subscriptionPlan: form.subscriptionPlan,
-        studentLimit: form.studentLimit ? Number(form.studentLimit) : null,
-
-        admin: {
-          name: form.adminName,
-          email: form.adminEmail,
-          password: form.adminPassword,
-        },
+        adminName: form.adminName,
+        adminEmail: form.adminEmail,
+        plan: form.subscriptionPlan,
+        billingCycle: form.billingCycle,
+        subscriptionStatus: "active",
       }
 
-      const res = await fetch(`${API_BASE_URL}/schools`, {
+      const res = await fetch(`${API_BASE_URL}/school-onboarding/create-school`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -120,14 +168,23 @@ export default function CreateSchoolPage() {
         body: JSON.stringify(payload),
       })
 
-      const data = await res.json().catch(() => ({}))
+      const data: CreateSchoolResponse = await res.json().catch(() => ({}))
 
       if (!res.ok) {
         const err = data as ApiError
         throw new Error(err.message || err.error || "Failed to create school")
       }
 
-      setSuccess("School created successfully")
+      setSuccess(data.message || "School onboarded successfully")
+
+      setCreatedSchoolCode(data.credentials?.schoolCode || data.school?.schoolCode || "")
+      setCreatedAdminEmail(data.credentials?.email || data.admin?.email || "")
+      setTemporaryPassword(data.credentials?.temporaryPassword || "")
+      setEmailSent(
+        typeof data.emailStatus?.sent === "boolean" ? data.emailStatus.sent : null
+      )
+      setEmailError(data.emailStatus?.error || "")
+      setShowCredentials(true)
 
       setForm({
         name: "",
@@ -139,18 +196,26 @@ export default function CreateSchoolPage() {
         principalEmail: "",
         adminName: "",
         adminEmail: "",
-        adminPassword: "",
         subscriptionPlan: "NORMAL",
-        studentLimit: "",
+        billingCycle: "monthly",
       })
-
-      setTimeout(() => {
-        router.push("/dashboard/schools")
-      }, 1200)
     } catch (err: any) {
       setError(err.message || "Something went wrong")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCopyCredentials = async () => {
+    const text = `School Code: ${createdSchoolCode}
+Admin Email: ${createdAdminEmail}
+Temporary Password: ${temporaryPassword}`
+
+    try {
+      await navigator.clipboard.writeText(text)
+      setSuccess("Credentials copied successfully")
+    } catch {
+      setError("Failed to copy credentials")
     }
   }
 
@@ -164,7 +229,8 @@ export default function CreateSchoolPage() {
               Create New School
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              Register a new school, assign its admin, and choose a subscription plan.
+              Register a new school, create its admin account, and send onboarding
+              credentials automatically.
             </p>
           </div>
 
@@ -200,6 +266,105 @@ export default function CreateSchoolPage() {
               {success ? (
                 <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                   {success}
+                </div>
+              ) : null}
+
+              {showCredentials ? (
+                <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-blue-900">
+                        Onboarding Successful
+                      </h3>
+                      <p className="mt-1 text-sm text-blue-800">
+                        The school has been created. Share these login details if
+                        needed.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyCredentials}
+                      className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      Copy Credentials
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <div className="rounded-xl bg-white p-4 ring-1 ring-blue-100">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        School Code
+                      </p>
+                      <p className="mt-2 text-base font-bold text-slate-900">
+                        {createdSchoolCode || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-white p-4 ring-1 ring-blue-100">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Admin Email
+                      </p>
+                      <p className="mt-2 break-all text-base font-bold text-slate-900">
+                        {createdAdminEmail || "-"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-white p-4 ring-1 ring-blue-100">
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                        Temporary Password
+                      </p>
+                      <p className="mt-2 text-base font-bold text-slate-900">
+                        {temporaryPassword || "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-white p-4 ring-1 ring-blue-100">
+                    <p className="text-sm font-medium text-slate-700">
+                      Email Status:{" "}
+                      <span
+                        className={
+                          emailSent
+                            ? "text-green-700"
+                            : emailSent === false
+                            ? "text-amber-700"
+                            : "text-slate-700"
+                        }
+                      >
+                        {emailSent === true
+                          ? "Email sent successfully"
+                          : emailSent === false
+                          ? "School created but email failed to send"
+                          : "No email status returned"}
+                      </span>
+                    </p>
+
+                    {emailError ? (
+                      <p className="mt-2 text-sm text-red-600">{emailError}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => router.push("/dashboard/schools")}
+                      className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      Go to Schools
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSuccess("")
+                        setShowCredentials(false)
+                      }}
+                      className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Create Another School
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
@@ -276,20 +441,6 @@ export default function CreateSchoolPage() {
 
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Student Limit
-                  </label>
-                  <input
-                    type="number"
-                    name="studentLimit"
-                    value={form.studentLimit}
-                    onChange={handleChange}
-                    placeholder="e.g. 500"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
                     Principal Name
                   </label>
                   <input
@@ -302,7 +453,7 @@ export default function CreateSchoolPage() {
                   />
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <label className="mb-1 block text-sm font-medium text-slate-700">
                     Principal Email
                   </label>
@@ -322,7 +473,8 @@ export default function CreateSchoolPage() {
                   School Admin Account
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  This admin will manage the school after creation.
+                  This admin will manage the school after creation. A temporary
+                  password will be generated automatically and sent by email.
                 </p>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -350,20 +502,6 @@ export default function CreateSchoolPage() {
                       value={form.adminEmail}
                       onChange={handleChange}
                       placeholder="admin@email.com"
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                      Admin Password
-                    </label>
-                    <input
-                      type="password"
-                      name="adminPassword"
-                      value={form.adminPassword}
-                      onChange={handleChange}
-                      placeholder="Minimum 6 characters"
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -443,6 +581,68 @@ export default function CreateSchoolPage() {
                 <div className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
                   {selectedPlanNote}
                 </div>
+
+                <div className="mt-6">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Billing Cycle
+                  </label>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label
+                      className={`cursor-pointer rounded-2xl border p-4 transition ${
+                        form.billingCycle === "monthly"
+                          ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
+                          : "border-slate-300 bg-white hover:border-slate-400"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="billingCycle"
+                        value="monthly"
+                        checked={form.billingCycle === "monthly"}
+                        onChange={handleChange}
+                        className="sr-only"
+                      />
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Monthly
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Flexible recurring monthly billing.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`cursor-pointer rounded-2xl border p-4 transition ${
+                        form.billingCycle === "yearly"
+                          ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
+                          : "border-slate-300 bg-white hover:border-slate-400"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="billingCycle"
+                        value="yearly"
+                        checked={form.billingCycle === "yearly"}
+                        onChange={handleChange}
+                        className="sr-only"
+                      />
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Yearly
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Better for long-term school subscriptions.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
+                    {billingCycleNote}
+                  </div>
+                </div>
               </div>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -493,26 +693,56 @@ export default function CreateSchoolPage() {
                 </div>
 
                 <div className="rounded-xl bg-slate-50 p-4">
-                  <p className="text-slate-500">Student Limit</p>
+                  <p className="text-slate-500">Billing Cycle</p>
                   <p className="mt-1 font-semibold text-slate-900">
-                    {form.studentLimit || "Not set"}
+                    {form.billingCycle}
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-6">
-              <h3 className="text-lg font-semibold text-blue-900">Backend Note</h3>
+              <h3 className="text-lg font-semibold text-blue-900">Onboarding Flow</h3>
               <p className="mt-2 text-sm leading-6 text-blue-800">
-                This UI sends a POST request to <span className="font-semibold">/schools</span>.
-                Your backend should create:
+                This page sends a POST request to{" "}
+                <span className="font-semibold">
+                  /school-onboarding/create-school
+                </span>
+                . The backend should:
               </p>
               <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-blue-800">
-                <li>the school record</li>
-                <li>the school admin user</li>
-                <li>the subscription plan details</li>
+                <li>create the school record</li>
+                <li>create the school admin user</li>
+                <li>generate a school code automatically</li>
+                <li>generate a temporary password automatically</li>
+                <li>create billing state details</li>
+                <li>send onboarding email to the school admin</li>
               </ul>
             </div>
+
+            {showCredentials ? (
+              <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+                <h3 className="text-lg font-semibold text-emerald-900">
+                  Latest Credentials
+                </h3>
+                <div className="mt-3 space-y-3 text-sm text-emerald-900">
+                  <div>
+                    <p className="text-emerald-700">School Code</p>
+                    <p className="font-semibold">{createdSchoolCode || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-emerald-700">Admin Email</p>
+                    <p className="font-semibold break-all">
+                      {createdAdminEmail || "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-emerald-700">Temporary Password</p>
+                    <p className="font-semibold">{temporaryPassword || "-"}</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
