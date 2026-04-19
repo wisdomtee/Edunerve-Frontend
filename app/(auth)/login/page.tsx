@@ -121,83 +121,103 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-2xl font-bold text-white">
-            E
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome Back</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in to continue to EduNerve
-          </p>
-        </div>
-
-        {error ? (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            {error}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              School Code
-            </label>
-            <input
-              type="text"
-              value={schoolCode}
-              onChange={(e) => setSchoolCode(e.target.value)}
-              placeholder="Enter your school code"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 uppercase outline-none transition focus:border-blue-500"
-            />
+    <div className="flex min-h-screen flex-col bg-slate-100">
+      <div className="flex flex-1 items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-2xl font-bold text-white">
+              E
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800">Welcome Back</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Sign in to continue to EduNerve
+            </p>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
-            />
+          {error ? (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          ) : null}
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                School Code
+              </label>
+              <input
+                type="text"
+                value={schoolCode}
+                onChange={(e) => setSchoolCode(e.target.value)}
+                placeholder="Enter your school code"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 uppercase outline-none transition focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {loading ? "Signing in..." : "Login"}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-slate-500">
+            Need help?{" "}
+            <Link
+              href="/"
+              className="font-medium text-blue-600 hover:text-blue-700"
+            >
+              Go back home
+            </Link>
           </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-500"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loading ? "Signing in..." : "Login"}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-500">
-          Need help?{" "}
-          <Link
-            href="/"
-            className="font-medium text-blue-600 hover:text-blue-700"
-          >
-            Go back home
-          </Link>
         </div>
       </div>
+
+      <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center text-xs text-slate-500">
+        <div className="flex flex-col items-center justify-center gap-2">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white shadow-sm">
+              TN
+            </div>
+            <span className="text-sm font-semibold text-slate-700">
+              TechNerve
+            </span>
+          </div>
+
+          <p>
+            © {new Date().getFullYear()} EduNerve • Powered by{" "}
+            <span className="font-semibold text-blue-600">TechNerve</span>
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }
