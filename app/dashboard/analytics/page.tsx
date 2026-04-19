@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import {
   Activity,
   BadgeDollarSign,
@@ -9,6 +10,7 @@ import {
   Building2,
   CalendarCheck2,
   GraduationCap,
+  Lock,
   RefreshCw,
   School,
   TrendingUp,
@@ -64,6 +66,8 @@ type AnalyticsPayload = {
   recentActivity?: RecentActivityItem[]
 }
 
+type AccessState = "allowed" | "pro_required" | "subscription_inactive" | "error"
+
 const defaultSummary: AnalyticsSummary = {
   totalSchools: 0,
   totalStudents: 0,
@@ -84,6 +88,8 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
+  const [accessState, setAccessState] = useState<AccessState>("allowed")
+  const [accessMessage, setAccessMessage] = useState("")
   const [summary, setSummary] = useState<AnalyticsSummary>(defaultSummary)
   const [enrollmentTrend, setEnrollmentTrend] = useState<EnrollmentItem[]>([])
   const [revenueTrend, setRevenueTrend] = useState<RevenueItem[]>([])
@@ -93,6 +99,9 @@ export default function AnalyticsPage() {
   const loadAnalytics = async (isRefresh = false) => {
     try {
       setError("")
+      setAccessMessage("")
+      setAccessState("allowed")
+
       if (isRefresh) {
         setRefreshing(true)
       } else {
@@ -131,7 +140,24 @@ export default function AnalyticsPage() {
       )
     } catch (err: any) {
       console.error("Failed to load analytics:", err)
-      setError(err?.message || "Failed to load analytics.")
+
+      const message = String(err?.message || "Failed to load analytics.")
+
+      if (message.toLowerCase().includes("only available on pro plan")) {
+        setAccessState("pro_required")
+        setAccessMessage(message)
+        setError("")
+      } else if (
+        message.toLowerCase().includes("subscription inactive") ||
+        message.toLowerCase().includes("please renew")
+      ) {
+        setAccessState("subscription_inactive")
+        setAccessMessage(message)
+        setError("")
+      } else {
+        setAccessState("error")
+        setError(message)
+      }
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -181,6 +207,146 @@ export default function AnalyticsPage() {
           <div className="h-96 animate-pulse rounded-3xl border border-slate-200 bg-white shadow-sm" />
           <div className="h-96 animate-pulse rounded-3xl border border-slate-200 bg-white shadow-sm" />
         </div>
+      </div>
+    )
+  }
+
+  if (accessState === "pro_required") {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-3xl border border-amber-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-amber-100 p-3 text-amber-700">
+                <Lock className="h-7 w-7" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-800">
+                  Analytics Dashboard
+                </h1>
+                <p className="mt-1 text-sm text-slate-500">
+                  Advanced analytics is currently locked for this school.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadAnalytics(true)}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Checking..." : "Try Again"}
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <BarChart3 className="h-8 w-8" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-slate-900">
+              Upgrade to PRO to unlock analytics
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {accessMessage ||
+                "This feature is only available on PRO plan. Upgrade your subscription to access detailed student, class, attendance, revenue, and performance analytics."}
+            </p>
+
+            <div className="mt-6 grid gap-4 text-left md:grid-cols-3">
+              <FeatureBox title="Revenue Insights" subtitle="Track monthly and yearly revenue patterns." />
+              <FeatureBox title="Enrollment Trends" subtitle="Monitor student growth over time." />
+              <FeatureBox title="Attendance Insights" subtitle="View attendance patterns and trends." />
+            </div>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                href="/dashboard/subscriptions"
+                className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Upgrade Subscription
+              </Link>
+
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  if (accessState === "subscription_inactive") {
+    return (
+      <div className="space-y-6">
+        <section className="rounded-3xl border border-red-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-red-100 p-3 text-red-700">
+                <Lock className="h-7 w-7" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-800">
+                  Analytics Dashboard
+                </h1>
+                <p className="mt-1 text-sm text-slate-500">
+                  Your subscription is currently inactive.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadAnalytics(true)}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              {refreshing ? "Checking..." : "Check Again"}
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-red-200 bg-red-50 p-8 shadow-sm">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-700">
+              <BadgeDollarSign className="h-8 w-8" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-slate-900">
+              Renew your subscription to continue
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {accessMessage ||
+                "Your school subscription is inactive. Renew or reactivate your subscription to continue using analytics and other protected features."}
+            </p>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                href="/dashboard/subscriptions"
+                className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                Renew Subscription
+              </Link>
+
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Back to Dashboard
+              </Link>
+            </div>
+          </div>
+        </section>
       </div>
     )
   }
@@ -496,6 +662,8 @@ async function fetchAnalyticsData(): Promise<AnalyticsPayload> {
     `${API_BASE_URL}/dashboard/stats`,
   ]
 
+  let lastError: any = null
+
   for (const endpoint of endpointCandidates) {
     try {
       const data = await apiFetchJson<any>(endpoint)
@@ -554,8 +722,31 @@ async function fetchAnalyticsData(): Promise<AnalyticsPayload> {
           data.activities ||
           [],
       })
-    } catch (error) {
+    } catch (error: any) {
+      lastError = error
       console.warn(`Analytics endpoint failed: ${endpoint}`, error)
+
+      const message = String(error?.message || "").toLowerCase()
+
+      if (
+        message.includes("only available on pro plan") ||
+        message.includes("subscription inactive") ||
+        message.includes("please renew")
+      ) {
+        throw error
+      }
+    }
+  }
+
+  if (lastError) {
+    const message = String(lastError?.message || "").toLowerCase()
+
+    if (
+      message.includes("only available on pro plan") ||
+      message.includes("subscription inactive") ||
+      message.includes("please renew")
+    ) {
+      throw lastError
     }
   }
 
@@ -825,6 +1016,21 @@ function MiniMetric({
       <p className="text-sm font-medium text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-slate-800">{formatNumber(value)}</p>
       <p className="mt-1 text-xs text-slate-500">{helper}</p>
+    </div>
+  )
+}
+
+function FeatureBox({
+  title,
+  subtitle,
+}: {
+  title: string
+  subtitle: string
+}) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-white p-4">
+      <p className="text-sm font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
     </div>
   )
 }
