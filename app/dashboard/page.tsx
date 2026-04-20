@@ -1551,6 +1551,10 @@ export default function DashboardHomePage() {
             </div>
           </section>
         )}
+
+        <footer className="border-t border-gray-200 pt-4 text-center text-xs text-gray-500">
+          Build by TechNerve
+        </footer>
       </div>
     </RoleGuard>
   )

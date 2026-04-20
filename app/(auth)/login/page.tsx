@@ -202,21 +202,7 @@ export default function LoginPage() {
       </div>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center text-xs text-slate-500">
-        <div className="flex flex-col items-center justify-center gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white shadow-sm">
-              TN
-            </div>
-            <span className="text-sm font-semibold text-slate-700">
-              TechNerve
-            </span>
-          </div>
-
-          <p>
-            © {new Date().getFullYear()} EduNerve • Powered by{" "}
-            <span className="font-semibold text-blue-600">TechNerve</span>
-          </p>
-        </div>
+        Build by TechNerve
       </footer>
     </div>
   )
