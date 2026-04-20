@@ -202,7 +202,7 @@ export default function LoginPage() {
       </div>
 
       <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center text-xs text-slate-500">
-        Build by TechNerve
+        Build by TechNerve...
       </footer>
     </div>
   )
