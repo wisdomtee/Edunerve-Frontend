@@ -155,19 +155,61 @@ const CHART_COLORS = [
   "#06b6d4",
 ]
 
+const EMPTY_STATS: DashboardStats = {
+  schools: 0,
+  students: 0,
+  teachers: 0,
+  classes: 0,
+  results: 0,
+  attendance: 0,
+}
+
+const hasAnalyticsAccess = (user: AuthUser | null): boolean => {
+  if (!user) return false
+
+  if (user.role === "SUPER_ADMIN") return true
+
+  const candidates = [
+    user.plan,
+    user.subscriptionPlan,
+    user.packageType,
+    user.tier,
+    user.subscription?.plan,
+    user.school?.plan,
+    user.school?.subscriptionPlan,
+    user.schoolSubscription?.plan,
+  ]
+
+  const normalizedValues = candidates
+    .filter(Boolean)
+    .map((value) => String(value).trim().toUpperCase())
+
+  if (
+    normalizedValues.includes("PRO") ||
+    normalizedValues.includes("PREMIUM")
+  ) {
+    return true
+  }
+
+  if (
+    user.isPro === true ||
+    user.hasProAccess === true ||
+    user.canViewAnalytics === true
+  ) {
+    return true
+  }
+
+  return false
+}
+
 export default function DashboardHomePage() {
   const router = useRouter()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [stats, setStats] = useState<DashboardStats>({
-    schools: 0,
-    students: 0,
-    teachers: 0,
-    classes: 0,
-    results: 0,
-    attendance: 0,
-  })
+  const [canViewAnalytics, setCanViewAnalytics] = useState(false)
+
+  const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS)
   const [childSummary, setChildSummary] = useState<ChildSummary>({})
 
   const [attendanceTrend, setAttendanceTrend] = useState<AttendanceTrendItem[]>(
@@ -245,37 +287,50 @@ export default function DashboardHomePage() {
       if (startDate) params.set("startDate", startDate)
       if (endDate) params.set("endDate", endDate)
 
-      const analyticsRes = await fetch(
-        `${API_BASE_URL}/analytics/dashboard?${params.toString()}`,
-        {
-          headers: getAuthHeaders(),
-          credentials: "include",
-        }
-      )
+      const analyticsAllowed = hasAnalyticsAccess(currentUser)
+      setCanViewAnalytics(analyticsAllowed)
 
-      if (!analyticsRes.ok) {
-        throw new Error("Failed to load analytics dashboard")
+      setStats(EMPTY_STATS)
+      setAvailableClasses([])
+      setAttendanceTrend([])
+      setPerformanceBySubject([])
+      setClassDistribution([])
+      setPerformanceTrend([])
+      setInsights([])
+
+      if (analyticsAllowed) {
+        try {
+          const analyticsRes = await fetch(
+            `${API_BASE_URL}/analytics/dashboard?${params.toString()}`,
+            {
+              headers: getAuthHeaders(),
+              credentials: "include",
+            }
+          )
+
+          if (analyticsRes.ok) {
+            const analyticsData: AnalyticsResponse = await analyticsRes.json()
+
+            setStats(analyticsData.summary || EMPTY_STATS)
+            setAvailableClasses(analyticsData.filters?.availableClasses || [])
+            setAttendanceTrend(analyticsData.charts?.attendanceTrend || [])
+            setPerformanceBySubject(
+              analyticsData.charts?.performanceBySubject || []
+            )
+            setClassDistribution(analyticsData.charts?.classDistribution || [])
+            setPerformanceTrend(analyticsData.charts?.performanceTrend || [])
+            setInsights(analyticsData.insights || [])
+          } else {
+            console.error(
+              "Analytics endpoint unavailable or restricted:",
+              analyticsRes.status,
+              analyticsRes.statusText
+            )
+          }
+        } catch (analyticsError) {
+          console.error("Failed to load analytics dashboard:", analyticsError)
+        }
       }
-
-      const analyticsData: AnalyticsResponse = await analyticsRes.json()
-
-      setStats(
-        analyticsData.summary || {
-          schools: 0,
-          students: 0,
-          teachers: 0,
-          classes: 0,
-          results: 0,
-          attendance: 0,
-        }
-      )
-
-      setAvailableClasses(analyticsData.filters?.availableClasses || [])
-      setAttendanceTrend(analyticsData.charts?.attendanceTrend || [])
-      setPerformanceBySubject(analyticsData.charts?.performanceBySubject || [])
-      setClassDistribution(analyticsData.charts?.classDistribution || [])
-      setPerformanceTrend(analyticsData.charts?.performanceTrend || [])
-      setInsights(analyticsData.insights || [])
 
       if (currentUser.role === "TEACHER") {
         try {
@@ -309,22 +364,28 @@ export default function DashboardHomePage() {
           console.error("Failed to load teacher summary:", teacherError)
         }
 
-        try {
-          const teacherChartsData = await fetchTeacherDashboardCharts()
+        if (analyticsAllowed) {
+          try {
+            const teacherChartsData = await fetchTeacherDashboardCharts()
 
-          if (teacherChartsData?.charts) {
-            setAttendanceTrend(teacherChartsData.charts.attendanceTrend || [])
-            setPerformanceBySubject(
-              teacherChartsData.charts.performanceBySubject || []
+            if (teacherChartsData?.charts) {
+              setAttendanceTrend(teacherChartsData.charts.attendanceTrend || [])
+              setPerformanceBySubject(
+                teacherChartsData.charts.performanceBySubject || []
+              )
+              setClassDistribution(
+                teacherChartsData.charts.classDistribution || []
+              )
+              setPerformanceTrend(
+                teacherChartsData.charts.performanceTrend || []
+              )
+            }
+          } catch (teacherChartError) {
+            console.error(
+              "Failed to load teacher dashboard charts:",
+              teacherChartError
             )
-            setClassDistribution(teacherChartsData.charts.classDistribution || [])
-            setPerformanceTrend(teacherChartsData.charts.performanceTrend || [])
           }
-        } catch (teacherChartError) {
-          console.error(
-            "Failed to load teacher dashboard charts:",
-            teacherChartError
-          )
         }
       }
 
@@ -336,7 +397,6 @@ export default function DashboardHomePage() {
           })
 
           const data: ParentPortalResponse = res.ok ? await res.json() : {}
-
           const children = Array.isArray(data?.children) ? data.children : []
 
           if (children.length > 0) {
@@ -382,6 +442,7 @@ export default function DashboardHomePage() {
         }
       }
     } catch (err: any) {
+      console.error("Dashboard load error:", err)
       setError(err.message || "Failed to load dashboard")
     } finally {
       setLoading(false)
@@ -622,7 +683,7 @@ export default function DashboardHomePage() {
   ]
 
   const teacherTopInsights =
-    insights.length > 0
+    canViewAnalytics && insights.length > 0
       ? insights.slice(0, 3)
       : [
           "Mark attendance early so absent students can be flagged quickly.",
@@ -824,21 +885,45 @@ export default function DashboardHomePage() {
           </div>
         </section>
 
-        {insights.length > 0 && (
-          <section className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">Insights</h3>
+        {canViewAnalytics ? (
+          insights.length > 0 && (
+            <section className="rounded-2xl border bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-gray-900">Insights</h3>
 
-            <div className="mt-4 space-y-3">
-              {insights.map((insight, index) => (
-                <div
-                  key={index}
-                  className="rounded-xl bg-blue-50 p-4 text-sm text-gray-700"
+              <div className="mt-4 space-y-3">
+                {insights.map((insight, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl bg-blue-50 p-4 text-sm text-gray-700"
+                  >
+                    {insight}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        ) : (
+          user?.role === "SCHOOL_ADMIN" && (
+            <section className="rounded-2xl border bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Advanced Analytics
+              </h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Upgrade to Pro to unlock insights, attendance trends, subject
+                performance, class distribution, and advanced academic
+                reporting.
+              </p>
+
+              <div className="mt-5">
+                <Link
+                  href="/dashboard/subscription"
+                  className="inline-flex rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white"
                 >
-                  {insight}
-                </div>
-              ))}
-            </div>
-          </section>
+                  Upgrade to Pro
+                </Link>
+              </div>
+            </section>
+          )
         )}
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1032,90 +1117,6 @@ export default function DashboardHomePage() {
         <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
             <h3 className="text-xl font-semibold text-gray-900">
-              Attendance Trend
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Daily attendance status from real records
-            </p>
-            <div className="mt-6 h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={attendanceTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="present" fill="#16a34a" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="absent" fill="#ef4444" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="late" fill="#f59e0b" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">
-              Performance Trend
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Monthly average score from real result records
-            </p>
-            <div className="mt-6 h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={performanceTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="averageScore"
-                    stroke="#2563eb"
-                    strokeWidth={3}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">
-              Class Distribution
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Student population by class
-            </p>
-            <div className="mt-6 h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={classDistribution}
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={110}
-                    dataKey="value"
-                    nameKey="name"
-                    label
-                  >
-                    {classDistribution.map((entry, index) => (
-                      <Cell
-                        key={`cell-${entry.name}-${index}`}
-                        fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">
               Quick Summary
             </h3>
             <div className="mt-4 space-y-4">
@@ -1145,54 +1146,214 @@ export default function DashboardHomePage() {
               </div>
             </div>
           </div>
-        </section>
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">
-              Subject Performance
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Average score by subject
-            </p>
-            <div className="mt-6 h-80 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={performanceBySubject}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="subject" />
-                  <YAxis domain={[0, 100]} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar
-                    dataKey="averageScore"
-                    fill="#8b5cf6"
-                    radius={[8, 8, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold text-gray-900">
-              Chart Notes
-            </h3>
-            <div className="mt-4 space-y-4 text-sm text-gray-600">
-              <div className="rounded-xl bg-slate-50 p-4">
-                Attendance chart now uses real attendance records.
-              </div>
-              <div className="rounded-xl bg-slate-50 p-4">
-                Performance trend now uses monthly average result scores.
-              </div>
-              <div className="rounded-xl bg-slate-50 p-4">
-                Class distribution now uses real student counts by class.
-              </div>
-              <div className="rounded-xl bg-slate-50 p-4">
-                Subject performance now uses real average score by subject.
+          {!canViewAnalytics && user?.role === "SCHOOL_ADMIN" ? (
+            <div className="rounded-2xl border bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Analytics Locked
+              </h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Your current plan includes core dashboard access. Upgrade to Pro
+                to unlock visual analytics and deeper reporting.
+              </p>
+              <div className="mt-5">
+                <Link
+                  href="/dashboard/subscription"
+                  className="inline-flex rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Upgrade to Pro
+                </Link>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-2xl border bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Dashboard Status
+              </h3>
+              <div className="mt-4 space-y-4 text-sm text-gray-600">
+                <div className="rounded-xl bg-slate-50 p-4">
+                  Core dashboard modules are active and ready for daily use.
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  Filters can be used to refine the reporting period and class
+                  focus.
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  Charts and insights will display according to your account
+                  access level.
+                </div>
+              </div>
+            </div>
+          )}
         </section>
+
+        {canViewAnalytics && (
+          <>
+            <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Attendance Trend
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Daily attendance status from real records
+                </p>
+                <div className="mt-6 h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={attendanceTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Bar
+                        dataKey="present"
+                        fill="#16a34a"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="absent"
+                        fill="#ef4444"
+                        radius={[8, 8, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="late"
+                        fill="#f59e0b"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Performance Trend
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Monthly average score from real result records
+                </p>
+                <div className="mt-6 h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={performanceTrend}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="averageScore"
+                        stroke="#2563eb"
+                        strokeWidth={3}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Class Distribution
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Student population by class
+                </p>
+                <div className="mt-6 h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={classDistribution}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={110}
+                        dataKey="value"
+                        nameKey="name"
+                        label
+                      >
+                        {classDistribution.map((entry, index) => (
+                          <Cell
+                            key={`cell-${entry.name}-${index}`}
+                            fill={CHART_COLORS[index % CHART_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Subject Performance
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Average score by subject
+                </p>
+                <div className="mt-6 h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={performanceBySubject}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="subject" />
+                      <YAxis domain={[0, 100]} />
+                      <Tooltip />
+                      <Legend />
+                      <Bar
+                        dataKey="averageScore"
+                        fill="#8b5cf6"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </section>
+
+            <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Chart Notes
+                </h3>
+                <div className="mt-4 space-y-4 text-sm text-gray-600">
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    Attendance chart now uses real attendance records.
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    Performance trend now uses monthly average result scores.
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    Class distribution now uses real student counts by class.
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    Subject performance now uses real average score by subject.
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Analytics Access
+                </h3>
+                <div className="mt-4 space-y-4 text-sm text-gray-600">
+                  <div className="rounded-xl bg-green-50 p-4 text-green-800">
+                    Advanced analytics is active for this account.
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    Use filters above to narrow results by class, term, and date
+                    range.
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    If a chart is empty, it usually means there is no matching
+                    data for the selected filters yet.
+                  </div>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
 
         {user?.role === "SUPER_ADMIN" && (
           <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
