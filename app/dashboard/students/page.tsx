@@ -568,35 +568,21 @@ export default function StudentsPage() {
             </div>
           ) : (
             <table className="min-w-full border-collapse">
+              {/* FIX: thead only contains the header row, tbody is a sibling — not nested inside thead */}
               <thead>
                 <tr className="border-b bg-gray-50 text-left">
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Student ID
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Gender
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Class
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Parent
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Phone
-                  </th>
-                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">
-                    Actions
-                  </th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Name</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Student ID</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Gender</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Class</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Parent</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Email</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Phone</th>
+                  <th className="px-4 py-3 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
 
+              {/* FIX: single tbody, rows rendered once */}
               <tbody>
                 {filteredStudents.map((student) => (
                   <tr key={student.id} className="border-b hover:bg-gray-50">
@@ -630,6 +616,15 @@ export default function StudentsPage() {
                           className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
                         >
                           View
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            router.push(`/dashboard/students/${student.id}/id-card`)
+                          }
+                          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700"
+                        >
+                          Generate ID
                         </button>
 
                         {canManageStudents && (
