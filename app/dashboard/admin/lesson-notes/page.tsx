@@ -1,156 +1,110 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState } from "react"
+import { motion } from "framer-motion"
 
 type Teacher = {
-  id: string;
-  name: string;
-  avatar?: string;
-};
+  id: string
+  name: string
+  avatar?: string
+}
 
 type LessonNote = {
-  id: string;
-  title: string;
-  subject: string;
-  classId: number;
-  content: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  createdAt: string;
-  teacher: Teacher;
-};
+  id: string
+  title: string
+  subject: string
+  classId: number
+  content: string
+  status: "PENDING" | "APPROVED" | "REJECTED"
+  createdAt: string
+  teacher: Teacher
+}
 
 export default function AdminLessonDashboard() {
-  const [notes, setNotes] = useState<LessonNote[]>([]);
-  const [selected, setSelected] = useState<LessonNote | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [notes, setNotes] = useState<LessonNote[]>([])
+  const [selected, setSelected] = useState<LessonNote | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchNotes();
-  }, []);
+    fetchNotes()
+  }, [])
 
   const fetchNotes = async () => {
-    setLoading(true);
+    setLoading(true)
+
     try {
-      const res = await fetch("/admin/lesson-notes/pending");
-      const data = await res.json();
-      setNotes(data.notes || []);
-    } catch (err) {
-      console.error(err);
+      const res = await fetch("/admin/lesson-notes/pending")
+      const data = await res.json()
+
+      setNotes(data.notes || [])
+    } catch (error) {
+      console.error(error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
-
-  const reviewNote = async (id: string, action: "APPROVED" | "REJECTED") => {
-    try {
-      await fetch("/admin/lesson-notes/review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, action }),
-      });
-
-      setNotes((prev) => prev.filter((n) => n.id !== id));
-      setSelected(null);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <div className="w-1/3 border-r bg-white p-4 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Pending Lesson Notes</h2>
+    <div className="p-6">
+      <h1 className="text-3xl font-bold mb-6">
+        Lesson Notes
+      </h1>
 
-        {loading && <p>Loading...</p>}
-
-        {!loading && notes.length === 0 && (
-          <p className="text-gray-500">No pending notes</p>
-        )}
-
-        <div className="space-y-3">
+      {loading ? (
+        <p>Loading...</p>
+      ) : notes.length === 0 ? (
+        <p>No lesson notes found.</p>
+      ) : (
+        <div className="grid gap-4">
           {notes.map((note) => (
             <motion.div
               key={note.id}
-              whileHover={{ scale: 1.02 }}
-              className="p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
-              onClick={() => setSelected(note)}
+              whileHover={{ scale: 1.01 }}
+              className="border rounded-xl p-4 shadow bg-white"
             >
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-bold">
-                  {note.teacher?.name?.charAt(0) || "T"}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-sm">
-                    {note.teacher?.name || "Unknown Teacher"}
-                  </h3>
-                  <p className="text-xs text-gray-400">Teacher</p>
-                </div>
-              </div>
+              <h2 className="text-xl font-semibold">
+                {note.title}
+              </h2>
 
-              <h3 className="font-semibold">{note.title}</h3>
               <p className="text-sm text-gray-500">
-                Subject: {note.subject}
+                {note.subject}
               </p>
-              <p className="text-xs text-gray-400">
-                Class ID: {note.classId}
+
+              <p className="mt-2 line-clamp-3">
+                {note.content}
               </p>
+
+              <button
+                onClick={() => setSelected(note)}
+                className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg"
+              >
+                View Note
+              </button>
             </motion.div>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* Main panel */}
-      <div className="flex-1 p-6">
-        {!selected ? (
-          <div className="text-gray-500">Select a lesson note to preview</div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-6 rounded-xl shadow"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center font-bold">
-                {selected.teacher?.name?.charAt(0) || "T"}
-              </div>
-              <div>
-                <h3 className="font-semibold">
-                  {selected.teacher?.name || "Unknown Teacher"}
-                </h3>
-                <p className="text-sm text-gray-500">Teacher</p>
-              </div>
-            </div>
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
+            <h2 className="text-2xl font-bold mb-4">
+              {selected.title}
+            </h2>
 
-            <h2 className="text-2xl font-bold mb-2">{selected.title}</h2>
-
-            <div className="text-sm text-gray-500 mb-4">
-              Subject: {selected.subject} | Class: {selected.classId}
-            </div>
-
-            <div className="border p-4 rounded bg-gray-50 mb-6 whitespace-pre-wrap">
+            <p className="mb-4">
               {selected.content}
-            </div>
+            </p>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => reviewNote(selected.id, "APPROVED")}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                Approve
-              </button>
-
-              <button
-                onClick={() => reviewNote(selected.id, "REJECTED")}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Reject
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </div>
+            <button
+              onClick={() => setSelected(null)}
+              className="bg-red-600 text-white px-4 py-2 rounded-lg"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
-  );
+  )
 }
