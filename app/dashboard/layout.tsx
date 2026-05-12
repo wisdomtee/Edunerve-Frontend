@@ -109,84 +109,132 @@ const menuItems: MenuItem[] = [
     roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER", "PARENT"],
     icon: LayoutDashboard,
   },
+
   {
     name: "Analytics",
     href: "/dashboard/analytics",
     roles: ["SUPER_ADMIN", "SCHOOL_ADMIN"],
     icon: BarChart3,
   },
+
   {
-    name: "Schools",
-    href: "/dashboard/schools",
-    roles: ["SUPER_ADMIN"],
-    icon: Building2,
-  },
+  name: "Schools",
+  href: "/dashboard/super-admin/schools",
+  roles: ["SUPER_ADMIN"],
+  icon: Building2,
+},
+
   {
     name: "Subscriptions",
     href: "/dashboard/subscriptions",
     roles: ["SUPER_ADMIN"],
     icon: BookOpen,
   },
+
   {
     name: "Billing",
     href: "/dashboard/super-admin/billing",
     roles: ["SUPER_ADMIN"],
     icon: CreditCard,
   },
+
+  /* ================= STUDENTS ================= */
+
   {
     name: "Students",
     href: "/dashboard/students",
     roles: ["SCHOOL_ADMIN", "TEACHER"],
     icon: GraduationCap,
   },
-  {
-    name: "Attendance",
-    href: "/dashboard/attendance",
-    roles: ["SCHOOL_ADMIN", "TEACHER"],
-    icon: CalendarCheck2,
-  },
+
   {
     name: "Teachers",
     href: "/dashboard/teachers",
     roles: ["SCHOOL_ADMIN"],
     icon: Users,
   },
+
   {
     name: "Classes",
     href: "/dashboard/classes",
     roles: ["SCHOOL_ADMIN", "TEACHER"],
     icon: School,
   },
+
   {
     name: "Subjects",
     href: "/dashboard/subjects",
     roles: ["SCHOOL_ADMIN", "TEACHER"],
     icon: BookOpen,
   },
+
+  /* ================= CBT ================= */
+
+  {
+    name: "CBT Exams",
+    href: "/dashboard/admin/cbt",
+    roles: ["SCHOOL_ADMIN", "TEACHER"],
+    icon: BookOpen,
+  },
+
   {
     name: "Results",
     href: "/dashboard/results",
     roles: ["SCHOOL_ADMIN", "TEACHER"],
     icon: BookOpen,
   },
+
+  /* ================= ZOOM ================= */
+
+  {
+    name: "Zoom Classes",
+    href: "/dashboard/admin/zoom",
+    roles: ["SCHOOL_ADMIN", "TEACHER"],
+    icon: MessageSquare,
+  },
+
+  /* ================= FEES ================= */
+
+  {
+    name: "Fees",
+    href: "/dashboard/fees",
+    roles: ["SCHOOL_ADMIN"],
+    icon: CreditCard,
+  },
+
+  /* ================= ATTENDANCE ================= */
+
+  {
+    name: "Attendance",
+    href: "/dashboard/attendance",
+    roles: ["SCHOOL_ADMIN", "TEACHER"],
+    icon: CalendarCheck2,
+  },
+
+  /* ================= COMMUNICATION ================= */
+
   {
     name: "Messages",
     href: "/dashboard/messages",
     roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER", "PARENT"],
     icon: MessageSquare,
   },
-  {
-    name: "Parent Portal",
-    href: "/dashboard/parents",
-    roles: ["PARENT"],
-    icon: UserCircle2,
-  },
+
   {
     name: "Notifications",
     href: "/dashboard/notifications",
     roles: ["SUPER_ADMIN", "SCHOOL_ADMIN", "TEACHER", "PARENT"],
     icon: Bell,
     showNotificationBadge: true,
+  },
+
+  /* ================= PARENT ================= */
+
+  {
+    name: "Parent Portal",
+    href: "/dashboard/parents",
+    roles: ["PARENT"],
+    icon: UserCircle2,
   },
 ]
 

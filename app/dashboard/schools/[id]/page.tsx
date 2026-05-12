@@ -55,7 +55,9 @@ type UserData = {
 export default function SchoolDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const id = params?.id as string
+  const id = Array.isArray(params?.id)
+  ? params.id[0]
+  : params?.id ?? ""
 
   const [user, setUser] = useState<UserData | null>(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -148,9 +150,10 @@ export default function SchoolDetailsPage() {
       }
     }
 
-    if (id && !checkingAuth) {
-      fetchSchool()
-    }
+    if (!checkingAuth && id) {
+      if (!id) return
+  fetchSchool()
+}
   }, [id, checkingAuth])
 
   async function handleUpdateSchool(e: React.FormEvent) {

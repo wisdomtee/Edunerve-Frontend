@@ -74,6 +74,7 @@ export default function SuperAdminDashboard() {
         </p>
       </div>
 
+      {/* STATS */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card title="Total Schools" value={stats.totalSchools} />
         <Card title="Total Students" value={stats.totalStudents} />
@@ -81,6 +82,7 @@ export default function SuperAdminDashboard() {
         <Card title="Active Subscriptions" value={stats.activeSubscriptions} />
       </div>
 
+      {/* QUICK ACTIONS */}
       <div className="rounded-xl bg-white p-6 shadow">
         <h2 className="mb-4 text-lg font-semibold text-slate-800">
           Quick Actions
@@ -92,6 +94,14 @@ export default function SuperAdminDashboard() {
             className="rounded-lg bg-blue-600 px-4 py-2 text-white"
           >
             Manage Schools
+          </button>
+
+          {/* ✅ NEW BUTTON ADDED */}
+          <button
+            onClick={() => router.push("/dashboard/schools/create")}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-white"
+          >
+            Create School
           </button>
 
           <button
@@ -120,6 +130,7 @@ export default function SuperAdminDashboard() {
   )
 }
 
+/* CARD COMPONENT */
 function Card({ title, value }: { title: string; value: number }) {
   return (
     <div className="rounded-xl bg-white p-6 shadow">

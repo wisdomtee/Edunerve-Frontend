@@ -101,7 +101,10 @@ export default function CreateSchoolPage() {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
   }
 
   const resetCreatedDetails = () => {
@@ -173,6 +176,7 @@ export default function CreateSchoolPage() {
       }
 
       setSuccess(data.message || "School onboarded successfully")
+
       setCreatedSchoolCode(data.credentials?.schoolCode || data.school?.schoolCode || "")
       setCreatedAdminEmail(data.credentials?.email || data.admin?.email || "")
       setTemporaryPassword(data.credentials?.temporaryPassword || "")
@@ -203,7 +207,10 @@ export default function CreateSchoolPage() {
   }
 
   const handleCopyCredentials = async () => {
-    const text = `School Code: ${createdSchoolCode}\nAdmin Email: ${createdAdminEmail}\nTemporary Password: ${temporaryPassword}`
+    const text = `School Code: ${createdSchoolCode}
+Admin Email: ${createdAdminEmail}
+Temporary Password: ${temporaryPassword}`
+
     try {
       await navigator.clipboard.writeText(text)
       setSuccess("Credentials copied successfully")
@@ -226,6 +233,7 @@ export default function CreateSchoolPage() {
               credentials automatically.
             </p>
           </div>
+
           <Link
             href="/dashboard/schools"
             className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-100"
@@ -241,8 +249,12 @@ export default function CreateSchoolPage() {
               className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
             >
               <div className="mb-6">
-                <h2 className="text-lg font-semibold text-slate-900">School Information</h2>
-                <p className="mt-1 text-sm text-slate-500">Fill in the school details below.</p>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  School Information
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Fill in the school details below.
+                </p>
               </div>
 
               {error ? (
@@ -265,9 +277,11 @@ export default function CreateSchoolPage() {
                         Onboarding Successful
                       </h3>
                       <p className="mt-1 text-sm text-blue-800">
-                        The school has been created. Share these login details if needed.
+                        The school has been created. Share these login details if
+                        needed.
                       </p>
                     </div>
+
                     <button
                       type="button"
                       onClick={handleCopyCredentials}
@@ -286,6 +300,7 @@ export default function CreateSchoolPage() {
                         {createdSchoolCode || "-"}
                       </p>
                     </div>
+
                     <div className="rounded-xl bg-white p-4 ring-1 ring-blue-100">
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                         Admin Email
@@ -294,6 +309,7 @@ export default function CreateSchoolPage() {
                         {createdAdminEmail || "-"}
                       </p>
                     </div>
+
                     <div className="rounded-xl bg-white p-4 ring-1 ring-blue-100">
                       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
                         Temporary Password
@@ -309,7 +325,7 @@ export default function CreateSchoolPage() {
                       Email Status:{" "}
                       <span
                         className={
-                          emailSent === true
+                          emailSent
                             ? "text-green-700"
                             : emailSent === false
                             ? "text-amber-700"
@@ -323,6 +339,7 @@ export default function CreateSchoolPage() {
                           : "No email status returned"}
                       </span>
                     </p>
+
                     {emailError ? (
                       <p className="mt-2 text-sm text-red-600">{emailError}</p>
                     ) : null}
@@ -336,6 +353,7 @@ export default function CreateSchoolPage() {
                     >
                       Go to Schools
                     </button>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -451,10 +469,12 @@ export default function CreateSchoolPage() {
               </div>
 
               <div className="my-8 border-t border-slate-200 pt-6">
-                <h2 className="text-lg font-semibold text-slate-900">School Admin Account</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  School Admin Account
+                </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  This admin will manage the school after creation. A temporary password will be
-                  generated automatically and sent by email.
+                  This admin will manage the school after creation. A temporary
+                  password will be generated automatically and sent by email.
                 </p>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -471,6 +491,7 @@ export default function CreateSchoolPage() {
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
+
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
                       Admin Email
@@ -488,7 +509,9 @@ export default function CreateSchoolPage() {
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <h2 className="text-lg font-semibold text-slate-900">Subscription Plan</h2>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Subscription Plan
+                </h2>
                 <p className="mt-1 text-sm text-slate-500">
                   Choose the subscription type for this school.
                 </p>
@@ -511,7 +534,9 @@ export default function CreateSchoolPage() {
                     />
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-base font-semibold text-slate-900">Normal</h3>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Normal
+                        </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           Good for standard school operations.
                         </p>
@@ -539,7 +564,9 @@ export default function CreateSchoolPage() {
                     />
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-base font-semibold text-slate-900">Pro</h3>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Pro
+                        </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           Best for advanced analytics, billing, and scale.
                         </p>
@@ -559,6 +586,7 @@ export default function CreateSchoolPage() {
                   <label className="mb-2 block text-sm font-medium text-slate-700">
                     Billing Cycle
                   </label>
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <label
                       className={`cursor-pointer rounded-2xl border p-4 transition ${
@@ -576,7 +604,9 @@ export default function CreateSchoolPage() {
                         className="sr-only"
                       />
                       <div>
-                        <h3 className="text-base font-semibold text-slate-900">Monthly</h3>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Monthly
+                        </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           Flexible recurring monthly billing.
                         </p>
@@ -599,7 +629,9 @@ export default function CreateSchoolPage() {
                         className="sr-only"
                       />
                       <div>
-                        <h3 className="text-base font-semibold text-slate-900">Yearly</h3>
+                        <h3 className="text-base font-semibold text-slate-900">
+                          Yearly
+                        </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           Better for long-term school subscriptions.
                         </p>
@@ -621,6 +653,7 @@ export default function CreateSchoolPage() {
                 >
                   {loading ? "Creating School..." : "Create School"}
                 </button>
+
                 <Link
                   href="/dashboard/schools"
                   className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
@@ -641,20 +674,29 @@ export default function CreateSchoolPage() {
                     {form.name || "No school name yet"}
                   </p>
                 </div>
+
                 <div className="rounded-xl bg-slate-50 p-4">
                   <p className="text-slate-500">Admin</p>
                   <p className="mt-1 font-semibold text-slate-900">
                     {form.adminName || "No admin name yet"}
                   </p>
-                  <p className="text-slate-600">{form.adminEmail || "No admin email yet"}</p>
+                  <p className="text-slate-600">
+                    {form.adminEmail || "No admin email yet"}
+                  </p>
                 </div>
+
                 <div className="rounded-xl bg-slate-50 p-4">
                   <p className="text-slate-500">Plan</p>
-                  <p className="mt-1 font-semibold text-slate-900">{form.subscriptionPlan}</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {form.subscriptionPlan}
+                  </p>
                 </div>
+
                 <div className="rounded-xl bg-slate-50 p-4">
                   <p className="text-slate-500">Billing Cycle</p>
-                  <p className="mt-1 font-semibold text-slate-900">{form.billingCycle}</p>
+                  <p className="mt-1 font-semibold text-slate-900">
+                    {form.billingCycle}
+                  </p>
                 </div>
               </div>
             </div>
@@ -663,8 +705,10 @@ export default function CreateSchoolPage() {
               <h3 className="text-lg font-semibold text-blue-900">Onboarding Flow</h3>
               <p className="mt-2 text-sm leading-6 text-blue-800">
                 This page sends a POST request to{" "}
-                <span className="font-semibold">/school-onboarding/create-school</span>. The
-                backend should:
+                <span className="font-semibold">
+                  /school-onboarding/create-school
+                </span>
+                . The backend should:
               </p>
               <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-blue-800">
                 <li>create the school record</li>
@@ -678,7 +722,9 @@ export default function CreateSchoolPage() {
 
             {showCredentials ? (
               <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
-                <h3 className="text-lg font-semibold text-emerald-900">Latest Credentials</h3>
+                <h3 className="text-lg font-semibold text-emerald-900">
+                  Latest Credentials
+                </h3>
                 <div className="mt-3 space-y-3 text-sm text-emerald-900">
                   <div>
                     <p className="text-emerald-700">School Code</p>
@@ -686,7 +732,9 @@ export default function CreateSchoolPage() {
                   </div>
                   <div>
                     <p className="text-emerald-700">Admin Email</p>
-                    <p className="break-all font-semibold">{createdAdminEmail || "-"}</p>
+                    <p className="font-semibold break-all">
+                      {createdAdminEmail || "-"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-emerald-700">Temporary Password</p>

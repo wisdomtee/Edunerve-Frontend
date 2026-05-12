@@ -1,0 +1,15 @@
+export const getStudentExams = async (req, res) => {
+  const studentId = Number(req.params.studentId)
+
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+  })
+
+  const exams = await prisma.exam.findMany({
+    where: {
+      classId: student?.classId,
+    },
+  })
+
+  res.json(exams)
+}

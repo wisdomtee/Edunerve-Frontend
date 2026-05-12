@@ -17,6 +17,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [stats, setStats] = useState<Stats>({
+    
     students: 0,
     teachers: 0,
     classes: 0,

@@ -1,79 +1,94 @@
 "use client"
 
-type Props = {
-  student: {
+type Student = {
+  id: number
+  name: string
+  email: string
+  passportUrl?: string
+  class?: {
     name: string
-    studentId: string
-    gender?: string
-    session?: string
-    passportUrl?: string
-    class?: {
-      name: string
-    } | null
-    school?: {
-      name: string
-    } | null
   }
 }
 
-export default function StudentIdCard({ student }: Props) {
+export default function StudentIdCard({
+  student,
+}: {
+  student: Student
+}) {
   return (
     <div
       id="student-id-card"
-      className="w-[340px] h-[210px] rounded-2xl shadow-xl bg-white border overflow-hidden"
+      className="w-[340px] bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xl"
     >
       {/* HEADER */}
-      <div className="bg-blue-700 text-white p-3 text-center">
-        <h1 className="text-lg font-bold">
-          {student.school?.name || "EduNerve School"}
-        </h1>
-
-        <p className="text-xs">
-          STUDENT IDENTIFICATION CARD
-        </p>
-      </div>
-
-      {/* BODY */}
-      <div className="flex p-4 gap-4">
-        {/* PHOTO */}
-        <div>
+      <div className="bg-blue-700 text-white px-4 py-4 flex items-center gap-3">
+        <div className="w-12 h-12 bg-white rounded-full overflow-hidden">
           <img
-            src={
-              student.passportUrl ||
-              "https://via.placeholder.com/100x100.png?text=Photo"
-            }
-            alt="Student"
-            className="w-24 h-24 rounded-lg object-cover border"
+            src="/school-logo.png"
+            className="w-full h-full object-cover"
+            alt="logo"
           />
         </div>
 
-        {/* INFO */}
-        <div className="flex-1 text-sm">
-          <div className="mb-2">
-            <p className="text-gray-500">Full Name</p>
-            <p className="font-bold">{student.name}</p>
+        <div>
+          <h2 className="font-bold">
+            EDU NERVE SCHOOL
+          </h2>
+
+          <p className="text-xs">
+            Student ID Card
+          </p>
+        </div>
+      </div>
+
+      {/* BODY */}
+      <div className="p-4 flex gap-4">
+        {/* PHOTO */}
+        <div className="w-24 h-28 border rounded-lg overflow-hidden bg-gray-100">
+          {student.passportUrl ? (
+            <img
+              src={`http://localhost:5000/uploads/passports/${student.passportUrl}`}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+              NO PHOTO
+            </div>
+          )}
+        </div>
+
+        {/* DETAILS */}
+        <div className="flex-1 space-y-2">
+          <div>
+            <p className="text-xs text-gray-500">
+              Name
+            </p>
+            <p className="font-semibold">
+              {student.name}
+            </p>
           </div>
 
-          <div className="mb-2">
-            <p className="text-gray-500">Student ID</p>
-            <p className="font-semibold">{student.studentId}</p>
+          <div>
+            <p className="text-xs text-gray-500">
+              ID
+            </p>
+            <p>STD-{student.id}</p>
           </div>
 
-          <div className="mb-2">
-            <p className="text-gray-500">Class</p>
-            <p>{student.class?.name || "N/A"}</p>
-          </div>
-
-          <div className="mb-2">
-            <p className="text-gray-500">Session</p>
-            <p>{student.session || "2025/2026"}</p>
+          <div>
+            <p className="text-xs text-gray-500">
+              Class
+            </p>
+            <p>
+              {student.class?.name || "N/A"}
+            </p>
           </div>
         </div>
       </div>
 
       {/* FOOTER */}
-      <div className="bg-gray-100 text-center text-xs py-2">
-        Powered by TechNerve Inc.
+      <div className="border-t p-3 text-xs text-center text-gray-500">
+        Official Student Identification
       </div>
     </div>
   )

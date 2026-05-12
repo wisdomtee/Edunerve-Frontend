@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 
 import StudentIdCard from "@/components/student-id-card"
-import { downloadStudentId } from "@/components/download-student-id"
 
 export default function StudentIdPage() {
   const params = useParams()
@@ -13,12 +12,25 @@ export default function StudentIdPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/students/${params.id}`)
-      .then((res) => res.json())
-      .then((data) => {
+    const fetchStudent = async () => {
+      try {
+        const res = await fetch(
+          `http://localhost:5000/students/${params.id}`
+        )
+
+        const data = await res.json()
+
         setStudent(data)
+      } catch (err) {
+        console.error(err)
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    if (params.id) {
+      fetchStudent()
+    }
   }, [params.id])
 
   if (loading) {
@@ -31,22 +43,15 @@ export default function StudentIdPage() {
 
   if (!student) {
     return (
-      <div className="p-6">
+      <div className="p-6 text-red-500">
         Student not found
       </div>
     )
   }
 
   return (
-    <div className="p-6 flex flex-col items-center gap-6">
+    <div className="p-6">
       <StudentIdCard student={student} />
-
-      <button
-        onClick={downloadStudentId}
-        className="bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl"
-      >
-        Download ID Card
-      </button>
     </div>
   )
 }

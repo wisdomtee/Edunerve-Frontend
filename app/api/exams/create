@@ -1,0 +1,18 @@
+export const createExam = async (req, res) => {
+  try {
+    const { title, classId, questions, duration } = req.body
+
+    const exam = await prisma.exam.create({
+      data: {
+        title,
+        classId,
+        questions,
+        duration,
+      },
+    })
+
+    res.json(exam)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+}
